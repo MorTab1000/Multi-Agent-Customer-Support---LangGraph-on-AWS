@@ -2,7 +2,7 @@
 
 🟢 Interactive Architecture Walkthrough: [Live Demo](https://mortab1000.github.io/Multi-Agent-Customer-Support---LangGraph-on-AWS/) - Click to see the step-by-step data flow.
 
-> **Disclaimer & Context:** This repository was developed following a hands-on LangGraph & AWS workshop. While the core agentic logic (LangGraph states and nodes) served as the foundation, **my primary focus and contribution was implementing the cloud architecture**. This includes integrating the multi-agent system with AWS services (App Runner, EventBridge, Lambda, SageMaker A2I), creating the automated CI/CD deployment scripts, and managing the serverless infrastructure.
+> **Disclaimer & Context:** This repository was developed following a hands-on LangGraph & AWS workshop. While the core agentic logic (LangGraph states and nodes) served as the foundation, **my primary focus and contribution was implementing the cloud architecture**. This includes integrating the multi-agent system with AWS services (App Runner, EventBridge, Lambda, SageMaker A2I), setting up the automated CI/CD deployment scripts, and managing the serverless infrastructure.
 
 A production-ready multi-agent pipeline that answers customer support questions using LangGraph, Amazon Bedrock, Amazon Comprehend, and SageMaker A2I.
 
@@ -49,6 +49,7 @@ POST /ask → Domain Classifier (api.py) → LangGraph Graph
 │   ├── deploy.sh                 # Fully automated deployment script
 │   └── destroy.sh                # Full cloud teardown script
 ├── Dockerfile                    # Container configuration (python:3.12-slim)
+├── mcp_server.py                 # MCP Server: Bridge for Claude Desktop/Cursor tools  
 └── requirements.txt
 ```
 </details>
@@ -109,3 +110,7 @@ bash scripts/destroy.sh
 | Amazon ECR | Docker image registry |
 | AWS Lambda + EventBridge | A2I feedback loop automation |
 | Amazon S3 | FAQ data + feedback storage |
+
+## MCP integration
+
+The project now supports Model Context Protocol (MCP), allowing AI agents (like Claude or Cursor) to directly query the AWS Knowledge Base as a tool.
