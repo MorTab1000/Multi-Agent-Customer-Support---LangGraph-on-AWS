@@ -241,7 +241,7 @@ else:
         vectorIngestionConfiguration={
             "chunkingConfiguration": {
                 "chunkingStrategy": "FIXED_SIZE",
-                "fixedSizeChunkingConfiguration": {"maxTokens": 300, "overlapPercentage": 20}
+                "fixedSizeChunkingConfiguration": {"maxTokens": 1000, "overlapPercentage": 20}
             }
         }
     )
