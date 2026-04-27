@@ -8,7 +8,8 @@ __pycache__/
 *.egg-info/
 dist/
 build/
-
+data/
+data/pdfs/
 # macOS
 .DS_Store
 .AppleDouble
