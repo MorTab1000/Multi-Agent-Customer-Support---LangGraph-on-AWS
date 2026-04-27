@@ -535,7 +535,7 @@ if existing:
 # Create guardrail with content filters + contextual grounding
 g = bedrock.create_guardrail(
     name="$GUARDRAIL_NAME",
-    description="Content safety + anti-hallucination for multi-agent customer support",
+    description="Content safety and anti-hallucination for Computer Science Academic Assistant for Machine Learning Introduction course",
     contentPolicyConfig={
         "filtersConfig": [
             {"type": "HATE",        "inputStrength": "HIGH", "outputStrength": "HIGH"},
@@ -552,8 +552,8 @@ g = bedrock.create_guardrail(
             {"type": "RELEVANCE",  "threshold": 0.7},
         ]
     },
-    blockedInputMessaging="I cannot process this input.",
-    blockedOutputsMessaging="I wasn't able to generate a reliable answer. Please contact support.",
+    blockedInputMessaging="This question is outside the scope of this course materials.",
+    blockedOutputsMessaging="I couldn't find a reliable answer in the provided course materials.",
 )
 guardrail_id = g["guardrailId"]
 print(f"  Guardrail created: {guardrail_id}", file=sys.stderr)

@@ -334,20 +334,10 @@ if existing:
     print(json.dumps({"id": existing["id"], "version": ver}))
     sys.exit(0)
 
-# Create guardrail with content filters, denied topics, and contextual grounding
+# Create guardrail with content filters and contextual grounding
 g = bedrock.create_guardrail(
     name="$GUARDRAIL_NAME",
-    description="Content safety + anti-hallucination + topic filtering for Leumi Trade support",
-    topicPolicyConfig={
-        "topicsConfig": [
-            {
-                "name": "Competitors",
-                "definition": "Asking how to use eToro, Plus500, Robinhood, or Interactive Brokers apps.",
-                "examples": ["How do I open an eToro account?"],
-                "type": "DENY"
-            }
-        ]
-    },
+    description="Content safety and anti-hallucination for Computer Science Academic Assistant for Machine Learning Introduction course",
     contentPolicyConfig={
         "filtersConfig": [
             {"type": "HATE",        "inputStrength": "HIGH", "outputStrength": "HIGH"},
@@ -364,8 +354,8 @@ g = bedrock.create_guardrail(
             {"type": "RELEVANCE",  "threshold": 0.3},
         ]
     },
-    blockedInputMessaging="This question is outside Leumi Trade support scope.",
-    blockedOutputsMessaging="Unable to generate a reliable answer. Contact Leumi Trade support.",
+    blockedInputMessaging="This question is outside the scope of this course materials.",
+    blockedOutputsMessaging="I couldn't find a reliable answer in the provided course materials.",
 )
 guardrail_id = g["guardrailId"]
 print(f"  Guardrail created: {guardrail_id}", file=sys.stderr)
