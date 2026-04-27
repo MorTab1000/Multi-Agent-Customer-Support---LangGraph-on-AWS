@@ -1,5 +1,4 @@
 import os
-import json
 import boto3
 from fastapi import FastAPI
 from pydantic import BaseModel
@@ -14,21 +13,23 @@ _session = boto3.Session(
 _bedrock = _session.client("bedrock-runtime")
 
 OFF_TOPIC_MSG = (
-    "I can only answer questions about Leumi Trade, investing, trading, or financial markets. "
+    "I can only answer questions related to the 'Machine Learning Introduction' course lectures. "
     "Please ask a relevant question."
 )
 
 _DOMAIN_SYSTEM = (
-    "You are a domain classifier for a financial trading platform called Leumi Trade. "
-    "Decide if the user question is related to: investing, trading, financial markets, "
-    "stock exchanges, Leumi Trade platform features, portfolio management, trading accounts, "
-    "fees, or banking investment services. "
+    "You are a domain classifier for a course called 'Machine Learning Introduction'. "
+    "Decide if the user question is related to the course lecture content, including topics such as "
+    "machine learning concepts, supervised learning, unsupervised learning, model training, "
+    "evaluation metrics, overfitting, regularization, optimization, feature engineering, and "
+    "other material typically covered in introductory machine learning lectures. "
+    "If the user asks about unrelated topics (finance, medicine, politics, general chit-chat, etc.), answer NO. "
     "Reply with exactly one word: YES if related, NO if not."
 )
 
 
 def _is_in_domain(question: str) -> bool:
-    """Returns True if the question is about investing/Leumi Trade, False otherwise."""
+    """Returns True if the question is about the Machine Learning Introduction course."""
     try:
         response = _bedrock.converse(
             modelId="us.amazon.nova-pro-v1:0",
