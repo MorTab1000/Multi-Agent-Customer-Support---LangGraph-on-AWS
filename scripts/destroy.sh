@@ -70,6 +70,7 @@ echo " DESTROY: auth=$AUTH_DISPLAY  region=$REGION"
 echo "          stack=$STACK_NAME  suffix=$SUFFIX"
 echo "==================================================="
 read -rp "Are you sure you want to delete all resources? (yes/no): " CONFIRM
+CONFIRM="${CONFIRM//$'\r'/}"
 [[ "$CONFIRM" == "yes" ]] || { echo "Aborted."; exit 0; }
 
 # ── Resolve bucket names from CFN outputs ────────────────────────────────────
