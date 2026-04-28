@@ -4,10 +4,10 @@
 #
 # Deploys the full multi-agent app stack in 10 steps:
 #   1. CloudFormation (S3, IAM, ECR, Lambda, EventBridge)
-#   2. Upload FAQ files to S3
+#   2. Upload course material files to S3
 #   3. Create S3 Vector bucket + index
 #   4. Create Bedrock Knowledge Base
-#   5. Create data source + sync FAQs into KB
+#   5. Create data source + sync course materials into KB
 #   6. Patch Lambda env vars + IAM permissions
 #   7. Create SageMaker worker task template
 #   8. Create Bedrock Guardrail
@@ -82,13 +82,37 @@ ACCOUNT_ID=$(aws "${PROFILE_ARG[@]}" sts get-caller-identity \
   --query Account --output text --region "$REGION")
 echo "  Account: $ACCOUNT_ID  |  Region: $REGION"
 
+# Package hardened Lambda handler (used by CloudFormation in step 1)
+LAMBDA_ARTIFACT_BUCKET="multi-agent-artifacts-${ACCOUNT_ID}-${REGION}-${SUFFIX}"
+LAMBDA_ARTIFACT_KEY="lambda/a2i_completion_handler-${SUFFIX}.zip"
+aws "${PROFILE_ARG[@]}" s3api create-bucket \
+  --bucket "$LAMBDA_ARTIFACT_BUCKET" \
+  --create-bucket-configuration "LocationConstraint=$REGION" \
+  --region "$REGION" > /dev/null 2>&1 || true
+if [[ "$REGION" == "us-east-1" ]]; then
+  aws "${PROFILE_ARG[@]}" s3api create-bucket \
+    --bucket "$LAMBDA_ARTIFACT_BUCKET" \
+    --region "$REGION" > /dev/null 2>&1 || true
+fi
+cd "$REPO_DIR/lambda"
+zip -q function.zip a2i_completion_handler.py
+cd "$REPO_DIR"
+aws "${PROFILE_ARG[@]}" s3 cp "$REPO_DIR/lambda/function.zip" \
+  "s3://${LAMBDA_ARTIFACT_BUCKET}/${LAMBDA_ARTIFACT_KEY}" \
+  --region "$REGION" > /dev/null
+rm -f "$REPO_DIR/lambda/function.zip"
+echo "  Packaged Lambda uploaded to s3://${LAMBDA_ARTIFACT_BUCKET}/${LAMBDA_ARTIFACT_KEY}"
+
 # ── [1/10] CloudFormation ────────────────────────────────────────────────────
 echo ""
 echo "=== [1/10] Deploying CloudFormation stack ==="
 aws "${PROFILE_ARG[@]}" cloudformation deploy \
   --template-file "$REPO_DIR/infra/cloudformation.yaml" \
   --stack-name "$STACK_NAME" \
-  --parameter-overrides RandomSuffix="$SUFFIX" \
+  --parameter-overrides \
+    RandomSuffix="$SUFFIX" \
+    LambdaCodeS3Bucket="$LAMBDA_ARTIFACT_BUCKET" \
+    LambdaCodeS3Key="$LAMBDA_ARTIFACT_KEY" \
   --capabilities CAPABILITY_NAMED_IAM \
   --region "$REGION"
 
@@ -110,10 +134,10 @@ echo "  SageMaker Role   : $SAGEMAKER_ROLE"
 echo "  Lambda Function  : $LAMBDA_FUNCTION"
 echo "  ECR URI          : $ECR_URI"
 
-# ── [2/10] Upload FAQ files ──────────────────────────────────────────────────
+# ── [2/10] Upload course material files ──────────────────────────────────────
 echo ""
-echo "=== [2/10] Uploading FAQ files ==="
-aws "${PROFILE_ARG[@]}" s3 sync "$REPO_DIR/data/faqs/" "s3://$DATA_BUCKET/" --region "$REGION"
+echo "=== [2/10] Uploading course material files ==="
+aws "${PROFILE_ARG[@]}" s3 sync "$REPO_DIR/data/pdfs/" "s3://$DATA_BUCKET/" --region "$REGION"
 COUNT=$(aws "${PROFILE_ARG[@]}" s3 ls "s3://$DATA_BUCKET/" --region "$REGION" | wc -l | tr -d ' ')
 echo "  $COUNT file(s) in s3://$DATA_BUCKET/"
 
@@ -219,7 +243,7 @@ echo "  Knowledge Base ID: $KB_ID"
 
 # ── [5/10] Data source + sync ────────────────────────────────────────────────
 echo ""
-echo "=== [5/10] Creating data source and syncing FAQs ==="
+echo "=== [5/10] Creating data source and syncing course materials ==="
 DS_ID=$(python3 - <<PYEOF
 import boto3, os, time, sys
 session = boto3.Session(profile_name=os.environ.get("BOTO3_PROFILE") or None, region_name="$REGION")
@@ -481,7 +505,7 @@ echo ""
 echo " Test:"
 echo "   curl -s -X POST https://$SERVICE_URL/ask \\"
 echo "     -H 'Content-Type: application/json' \\"
-echo "     -d '{\"question\":\"Does Leumi Trade support IPO investments?\"}' | jq"
+echo "     -d '{\"question\":\"What is overfitting in machine learning?\"}' | jq"
 echo ""
 echo " Destroy:"
 echo "   bash scripts/destroy.sh --stack $STACK_NAME --suffix $SUFFIX --region $REGION --profile ${PROFILE:-default}"

@@ -104,10 +104,16 @@ else
   echo "  App Runner service not found (already deleted)."
 fi
 
-# ── [2/8] Empty S3 buckets ───────────────────────────────────────────────────
+# ── [2/8] Empty (and delete custom) S3 buckets ───────────────────────────────
 echo ""
 echo "=== [2/8] Emptying S3 buckets ==="
-for BUCKET in "$DATA_BUCKET" "$FEEDBACK_BUCKET"; do
+
+# Get Account ID for the artifact bucket name
+ACCOUNT_ID=$(aws "${PROFILE_ARG[@]}" sts get-caller-identity \
+  --query Account --output text --region "$REGION")
+LAMBDA_ARTIFACT_BUCKET="multi-agent-artifacts-${ACCOUNT_ID}-${REGION}-${SUFFIX}"
+
+for BUCKET in "$DATA_BUCKET" "$FEEDBACK_BUCKET" "$LAMBDA_ARTIFACT_BUCKET"; do
   if [[ -n "$BUCKET" ]]; then
     echo "  Emptying $BUCKET ..."
     aws "${PROFILE_ARG[@]}" s3 rm "s3://$BUCKET" --recursive --region "$REGION" 2>/dev/null || true
@@ -125,11 +131,15 @@ try:
             count += 1
     print(f'    Deleted {count} versions') if count else print('    (nothing to version-delete)')
 except Exception as e:
-    print(f'    {e}')
+    pass
 INNER
     echo "  $BUCKET emptied."
   fi
 done
+
+# Delete the Artifact bucket (since CFN doesn't manage it)
+echo "  Deleting Artifact bucket: $LAMBDA_ARTIFACT_BUCKET"
+aws "${PROFILE_ARG[@]}" s3api delete-bucket --bucket "$LAMBDA_ARTIFACT_BUCKET" --region "$REGION" 2>/dev/null || true
 
 # ── [3/8] Delete Bedrock Knowledge Base ──────────────────────────────────────
 # NOTE: KB must be deleted BEFORE the S3 Vector store, otherwise KB deletion fails
