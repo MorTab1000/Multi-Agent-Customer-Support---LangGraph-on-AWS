@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from app.main import app as graph_app, REGION, GUARDRAIL_ID, GUARDRAIL_VERSION
 
-api = FastAPI(title="Multi-Agent Customer Support API")
+api = FastAPI(title="Academic Assistant API")
 
 _session = boto3.Session(
     profile_name=os.environ.get("AWS_PROFILE") or None,
