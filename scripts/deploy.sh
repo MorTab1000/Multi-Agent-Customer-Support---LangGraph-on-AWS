@@ -24,7 +24,7 @@ set -euo pipefail
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
 PROFILE=""
-REGION="eu-west-1"
+REGION="us-east-1"
 SUFFIX="$(python3 -c "import random,string; print(''.join(random.choices(string.ascii_lowercase+string.digits,k=6)))")"
 ACCESS_KEY=""
 SECRET_KEY=""
@@ -95,7 +95,20 @@ if [[ "$REGION" == "us-east-1" ]]; then
     --region "$REGION" > /dev/null 2>&1 || true
 fi
 cd "$REPO_DIR/lambda"
-zip -q function.zip a2i_completion_handler.py
+
+# Cross-platform zip creation
+if command -v zip >/dev/null 2>&1; then
+  # Use native zip if available (Linux/Mac)
+  zip -q function.zip a2i_completion_handler.py
+elif command -v python33 >/dev/null 2>&1; then
+  # Fallback to python33 (Linux CI/CD fallback)
+  python3 -m zipfile -c function.zip a2i_completion_handler.py
+else
+  # Fallback to python3 (Windows Git Bash)
+  python3 -m zipfile -c function.zip a2i_completion_handler.py
+fi
+
+cd "$REPO_DIR"
 cd "$REPO_DIR"
 aws "${PROFILE_ARG[@]}" s3 cp "$REPO_DIR/lambda/function.zip" \
   "s3://${LAMBDA_ARTIFACT_BUCKET}/${LAMBDA_ARTIFACT_KEY}" \
@@ -148,32 +161,56 @@ echo "  output/ prefix created in $FEEDBACK_BUCKET"
 # ── [3/10] S3 Vector bucket + index ──────────────────────────────────────────
 echo ""
 echo "=== [3/10] Creating S3 Vector bucket and index ==="
-VECTOR_BUCKET_ARN="arn:aws:s3vectors:${REGION}:${ACCOUNT_ID}:bucket/edu-s3-vector"
-VECTOR_INDEX_ARN="arn:aws:s3vectors:${REGION}:${ACCOUNT_ID}:bucket/edu-s3-vector/index/edu-s3-vector-index"
+VECTOR_BUCKET_NAME="edu-s3-vector-${SUFFIX}"
+VECTOR_INDEX_NAME="edu-s3-vector-index-${SUFFIX}"
+VECTOR_BUCKET_ARN="arn:aws:s3vectors:${REGION}:${ACCOUNT_ID}:bucket/${VECTOR_BUCKET_NAME}"
+VECTOR_INDEX_ARN="arn:aws:s3vectors:${REGION}:${ACCOUNT_ID}:bucket/${VECTOR_BUCKET_NAME}/index/${VECTOR_INDEX_NAME}"
 
 python3 - <<PYEOF
-import boto3, os, sys
+import boto3, os, sys, time
 session = boto3.Session(profile_name=os.environ.get("BOTO3_PROFILE") or None, region_name="$REGION")
 s3v = session.client("s3vectors")
-try:
-    s3v.create_vector_bucket(vectorBucketName="edu-s3-vector")
-    print("  Vector bucket created.")
-except s3v.exceptions.ConflictException:
-    print("  Vector bucket already exists.")
-except Exception as e:
-    print(f"  ERROR: {e}", file=sys.stderr); sys.exit(1)
 
 try:
-    s3v.create_index(vectorBucketName="edu-s3-vector", indexName="edu-s3-vector-index",
-                     dataType="float32", dimension=1024, distanceMetric="cosine")
-    print("  Vector index created.")
+    s3v.create_vector_bucket(vectorBucketName="${VECTOR_BUCKET_NAME}")
+    print(f"  Vector bucket ${VECTOR_BUCKET_NAME} created.")
 except s3v.exceptions.ConflictException:
-    print("  Vector index already exists.")
+    print(f"  Vector bucket ${VECTOR_BUCKET_NAME} already exists.")
 except Exception as e:
-    print(f"  ERROR: {e}", file=sys.stderr); sys.exit(1)
+    print(f"  ERROR creating bucket: {e}", file=sys.stderr); sys.exit(1)
+
+print("  Waiting for bucket to propagate...")
+time.sleep(10) 
+
+try:
+    s3v.create_index(
+        vectorBucketName="${VECTOR_BUCKET_NAME}", 
+        indexName="${VECTOR_INDEX_NAME}",
+        dataType="float32", 
+        dimension=1024, 
+        distanceMetric="cosine",
+        metadataConfiguration={
+            "nonFilterableMetadataKeys": ["AMAZON_BEDROCK_TEXT_CHUNK"]
+        }
+    )
+    print(f"  Vector index ${VECTOR_INDEX_NAME} created.")
+except s3v.exceptions.ConflictException:
+    print(f"  Vector index ${VECTOR_INDEX_NAME} already exists.")
+except Exception as e:
+    if "NotFoundException" in str(e):
+        print("  Bucket still not ready, retrying in 10s...")
+        time.sleep(10)
+        s3v.create_index(
+            vectorBucketName="${VECTOR_BUCKET_NAME}", 
+            indexName="${VECTOR_INDEX_NAME}",
+            dataType="float32", dimension=1024, distanceMetric="cosine",
+            metadataConfiguration={"nonFilterableMetadataKeys": ["AMAZON_BEDROCK_TEXT_CHUNK"]}
+        )
+        print(f"  Vector index ${VECTOR_INDEX_NAME} created after retry.")
+    else:
+        print(f"  ERROR creating index: {e}", file=sys.stderr); sys.exit(1)
 PYEOF
 
-# Grant KB role access to the specific vector resources
 aws "${PROFILE_ARG[@]}" iam put-role-policy \
   --role-name "bedrock-kb-role-${SUFFIX}" \
   --policy-name S3VectorsBucketAccess \
@@ -264,9 +301,12 @@ else:
         },
         vectorIngestionConfiguration={
             "chunkingConfiguration": {
-                "chunkingStrategy": "FIXED_SIZE",
-                "fixedSizeChunkingConfiguration": {"maxTokens": 1000, "overlapPercentage": 20}
-            }
+              "chunkingStrategy": "FIXED_SIZE",
+              "fixedSizeChunkingConfiguration": {
+                  "maxTokens": 300, 
+                  "overlapPercentage": 20
+              }
+           }
         }
     )
     ds_id = ds["dataSource"]["dataSourceId"]
@@ -330,7 +370,7 @@ try:
     r = sm.describe_human_task_ui(HumanTaskUiName=ui_name)
     print(r["HumanTaskUiArn"])
 except sm.exceptions.ResourceNotFound:
-    template = open("$REPO_DIR/infra/a2i_worker_template.xml").read()
+    template = open("infra/a2i_worker_template.xml", "r", encoding="utf-8").read()
     r = sm.create_human_task_ui(HumanTaskUiName=ui_name, UiTemplate={"Content": template})
     print(r["HumanTaskUiArn"])
 except Exception as e:
