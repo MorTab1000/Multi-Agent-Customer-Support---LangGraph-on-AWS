@@ -2,7 +2,11 @@ import os
 import boto3
 from fastapi import FastAPI
 from pydantic import BaseModel
-from app.main import app as graph_app, REGION, GUARDRAIL_ID, GUARDRAIL_VERSION
+from app.main import (
+    app as graph_app,
+    REGION,
+    KB_CONFIDENCE_THRESHOLD,
+)
 
 api = FastAPI(title="Academic Assistant API")
 
@@ -19,11 +23,12 @@ OFF_TOPIC_MSG = (
 
 _DOMAIN_SYSTEM = (
     "You are a domain classifier for a course called 'Machine Learning Introduction'. "
-    "Decide if the user question is related to the course lecture content, including topics such as "
-    "machine learning concepts, supervised learning, unsupervised learning, model training, "
-    "evaluation metrics, overfitting, regularization, optimization, feature engineering, and "
-    "other material typically covered in introductory machine learning lectures. "
-    "If the user asks about unrelated topics (finance, medicine, politics, general chit-chat, etc.), answer NO. "
+    "Decide if the user question is related to machine learning concepts. "
+    "CRITICAL INSTRUCTION: Be semantically flexible. If a user asks about 'learning techniques', "
+    "'memorization', 'methods', or 'algorithms', you MUST treat it as a machine learning concept "
+    "(e.g., algorithmic memorization vs. generalization). "
+    "Topics include supervised/unsupervised learning, overfitting, underfitting, evaluation metrics, and algorithms. "
+    "If the user asks about completely unrelated domains (e.g., finance, politics, sports, general chit-chat), answer NO. "
     "Reply with exactly one word: YES if related, NO if not."
 )
 
@@ -66,7 +71,7 @@ def ask(req: AskRequest):
         return AskResponse(answer=OFF_TOPIC_MSG, confidence=0.0, escalated=False)
 
     result = graph_app.invoke({"question": req.question})
-    escalated = result.get("confidence", 1.0) < 0.75
+    escalated = result.get("confidence", 1.0) < KB_CONFIDENCE_THRESHOLD
     return AskResponse(
         answer=result.get("final_answer", ""),
         confidence=result.get("confidence", 0.0),

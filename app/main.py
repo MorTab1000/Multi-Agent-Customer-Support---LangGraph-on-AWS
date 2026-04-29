@@ -17,7 +17,7 @@ FLOW_ARN = os.environ.get("FLOW_ARN")
 
 KB_NUM_RESULTS = 5
 KB_OVERRIDE_SEARCH_TYPE = "SEMANTIC"
-KB_CONFIDENCE_THRESHOLD = 0.75
+KB_CONFIDENCE_THRESHOLD = 0.7
 
 GUARDRAIL_ID = os.environ.get("GUARDRAIL_ID", "uu2xo2tebez1")
 GUARDRAIL_VERSION = os.environ.get("GUARDRAIL_VERSION", "1")
@@ -138,19 +138,24 @@ def generate_final_answer(state: AgentState):
 
     # Hardened prompt: constrain the LLM to the KB source only
     prompt = ChatPromptTemplate.from_messages([
-        ("system",
-         "You are a helpful academic assistant for the 'Machine Learning Introduction' course. "
-         "You MUST base your response ONLY on the Course Material Excerpt provided below. "
-         "Do NOT add information that is not present in the Course Material Excerpt. "
-         "If the Course Material Excerpt does not fully address the question, say so honestly "
-         "and suggest asking the teaching staff or instructor. "
-         "Do NOT speculate, invent details, or answer from general knowledge."),
-        ("human",
-         "Student Question: {question}\n"
-         "Detected Sentiment: {sentiment}\n"
-         "Course Material Excerpt: {kb_answer}\n\n"
-         "Write a clear, professional response using only the Course Material Excerpt above.")
-    ])
+    ("system",
+     "You are an expert academic assistant for the 'Machine Learning Introduction' course at Ben-Gurion University. "
+     "Your goal is to provide deep, professional, and accurate answers based on the provided Course Material Excerpt. "
+     
+     "### INSTRUCTION TUNING RULES: "
+     "1. **Semantic Flexibility**: Terminology may vary. If a student asks about a 'technique' or 'method', relate it to the 'algorithms' in the text (e.g., 'Memorize algorithm'). "
+     "2. **Logical Inference**: If the excerpt mentions a concept briefly (e.g., 'Underfitting is related to approximation error'), use your expertise to explain that connection clearly based on the context. "
+     "3. **Mathematical Precision**: Use LaTeX for all formulas and notations. For example, use $err(h, D)$ for error or $m$ for sample size, as seen in the materials[cite: 85, 203]. "
+     "4. **Depth over Safety**: Do not be overly restrictive. If the excerpt contains the core answer, expand on it professionally. Only escalate to TAs if the excerpt is truly irrelevant to the topic. "
+     "5. **Response Format**: Structure your answer with clear headings and bold terms. "
+     "6. **Strict Refusals**: If the Student Question is completely unrelated to the Course Material Excerpt (e.g., asking for a recipe), you must output EXACTLY: 'I couldn't find a reliable answer in the provided course materials.' Do not add any formatting, markdown, or explanations."),
+    
+    ("human",
+     "Student Question: {question}\n"
+     "Detected Sentiment: {sentiment}\n"
+     "Course Material Excerpt: {kb_answer}\n\n"
+     "Using the excerpt provided, write a comprehensive academic response. ")
+])
     messages = prompt.format_messages(
         question=state["question"],
         sentiment=state["sentiment"],
