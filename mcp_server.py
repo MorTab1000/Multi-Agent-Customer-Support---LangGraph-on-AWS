@@ -2,7 +2,7 @@ from mcp.server.fastmcp import FastMCP
 import boto3
 import os
 
-mcp = FastMCP("AWS-FAQ-Service")
+mcp = FastMCP("ML-Introduction-Course-Assistant")
 
 REGION = os.environ.get("REGION", "us-east-1")
 KNOWLEDGE_BASE_ID = os.environ.get("KNOWLEDGE_BASE_ID")
@@ -11,12 +11,14 @@ session = boto3.Session(region_name=REGION)
 bedrock_agent_runtime = session.client("bedrock-agent-runtime")
 
 @mcp.tool()
-def search_leumi_trade_faq(query: str) -> str:
+def search_ml_course_material(query: str) -> str:
     """
-    search for relevant information in the Leumi Trade FAQ knowledge base and return the most relevant answer.
-    @query: The user's question or query to search for in the FAQ knowledge base.
-    @return: The most relevant answer from the FAQ knowledge base, or an error message if
-    Important: Use only the information from the knowledge base to answer the question. Do not use any external information or assumptions. If the answer is not found in the knowledge base, return "Results not found in the knowledge base."
+    Search for relevant information in the Machine Learning Introduction course knowledge base
+    and return the most relevant answer.
+    @query: The student's question to search for in the course knowledge base.
+    @return: The most relevant answer from the course knowledge base, or an error message.
+    Important: Use only information from the knowledge base. Do not use external assumptions.
+    If the answer is not found, return "No relevant course material found."
     """
     print(f"MCP Server: Searching for '{query}'...")
     
@@ -33,7 +35,7 @@ def search_leumi_trade_faq(query: str) -> str:
         results = response.get("retrievalResults", [])
 
         if not results:
-            return "The information you are looking for was not found in the Leumi Trade FAQ."
+            return "No relevant course material found."
 
         top = sorted(results, key=lambda r: r.get("score", 0.0), reverse=True)[0]
         content = top.get("content", {}).get("text", "")
@@ -41,7 +43,7 @@ def search_leumi_trade_faq(query: str) -> str:
         return content
 
     except Exception as e:
-        return f"Error occurred while accessing the knowledge base: {str(e)}"
+        return f"Error occurred while accessing the course knowledge base: {str(e)}"
 
 if __name__ == "__main__":
     mcp.run()
