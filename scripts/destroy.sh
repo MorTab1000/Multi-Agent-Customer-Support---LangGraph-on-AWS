@@ -19,7 +19,7 @@
 set -euo pipefail
 
 PROFILE=""
-REGION="eu-west-1"
+REGION="us-east-1"
 STACK_NAME=""
 SUFFIX=""
 ACCESS_KEY=""
