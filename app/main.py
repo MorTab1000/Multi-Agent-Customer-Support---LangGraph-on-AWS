@@ -19,7 +19,7 @@ KB_NUM_RESULTS = 5
 KB_OVERRIDE_SEARCH_TYPE = "SEMANTIC"
 KB_CONFIDENCE_THRESHOLD = 0.7
 
-GUARDRAIL_ID = os.environ.get("GUARDRAIL_ID", "uu2xo2tebez1")
+GUARDRAIL_ID = os.environ.get("GUARDRAIL_ID")
 GUARDRAIL_VERSION = os.environ.get("GUARDRAIL_VERSION", "1")
 
 # -----------------------
