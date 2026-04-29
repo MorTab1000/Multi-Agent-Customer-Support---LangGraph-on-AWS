@@ -15,17 +15,20 @@ Run from the project root:
 """
 
 import sys, os
+from dotenv import load_dotenv
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import json, time, boto3
 
 # ---------- config (mirrors main.py) ----------
-REGION        = "eu-west-1"
-AWS_PROFILE   = "aws-sandbox-personal-36"
-FEEDBACK_BUCKET = "feedback-bucket-kni9r8"
-DATA_BUCKET     = "data-bucket-kni9r8"
-KB_ID           = "Q0XGDUOZRR"
-DS_ID           = "5SONGOZDXF"
+load_dotenv()
+
+REGION        = os.getenv("REGION")
+AWS_PROFILE   = os.getenv("AWS_PROFILE")
+FEEDBACK_BUCKET = os.getenv("FEEDBACK_BUCKET")
+DATA_BUCKET     = os.getenv("DATA_BUCKET")
+KB_ID           = os.getenv("KB_ID")
+DS_ID           = os.getenv("DS_ID")
 
 # Mock Q&A to inject
 MOCK_QUESTION = "What is the difference between supervised and unsupervised learning?"
