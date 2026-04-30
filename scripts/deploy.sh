@@ -149,11 +149,11 @@ echo "  ECR URI          : $ECR_URI"
 # ── [2/10] Upload course material files ──────────────────────────────────────
 echo ""
 echo "=== [2/10] Uploading course material files ==="
-if [ -d "data/pdfs/" ]; then
-    echo "  Uploading files from data/pdfs/ to S3..."
-    aws s3 cp data/pdfs/ "s3://$DATA_BUCKET/main_data/" --recursive --region "$REGION"
+if [ -d "$REPO_DIR/data/pdfs/" ]; then
+    echo "  Uploading files from $REPO_DIR/data/pdfs/ to S3..."
+    aws s3 cp "$REPO_DIR/data/pdfs/" "s3://$DATA_BUCKET/main_data/" --recursive --region "$REGION"
 else
-    echo "  [WARNING] Directory data/pdfs/ not found. Skipping upload."
+    echo "  [WARNING] Directory $REPO_DIR/data/pdfs/ not found. Skipping upload."
     echo "  Make sure you have uploaded the course materials manually to: s3://$DATA_BUCKET/main_data/"
 fi
 
