@@ -27,8 +27,8 @@ REGION        = os.getenv("REGION")
 AWS_PROFILE   = os.getenv("AWS_PROFILE")
 FEEDBACK_BUCKET = os.getenv("FEEDBACK_BUCKET")
 DATA_BUCKET     = os.getenv("DATA_BUCKET")
-KB_ID           = os.getenv("KB_ID")
-DS_ID           = os.getenv("DS_ID")
+KB_ID           = os.getenv("KNOWLEDGE_BASE_ID")
+DS_ID           = os.getenv("DATA_SOURCE_ID")
 
 # Mock Q&A to inject
 MOCK_QUESTION = "What is the difference between supervised and unsupervised learning?"
