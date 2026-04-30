@@ -37,6 +37,11 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: Run Integration Tests
+        env:
+          KNOWLEDGE_BASE_ID: ${{ vars.KNOWLEDGE_BASE_ID }}
+          GUARDRAIL_ID: ${{ vars.GUARDRAIL_ID }}
+          GUARDRAIL_VERSION: ${{ vars.GUARDRAIL_VERSION }}
+          FLOW_DEFINITION_ARN: ${{ vars.FLOW_DEFINITION_ARN }}
         run: |
           python tests/test_guardrails.py
           python tests/test_feedback_loop.py
