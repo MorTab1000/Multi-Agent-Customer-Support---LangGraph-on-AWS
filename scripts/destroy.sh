@@ -18,6 +18,19 @@
 # ============================================================
 set -euo pipefail
 
+# Python Command Detection
+if python3 --version &>/dev/null; then
+    PYTHON_CMD="python3"
+elif python --version &>/dev/null; then
+    PYTHON_CMD="python"
+elif py --version &>/dev/null; then
+    PYTHON_CMD="py"
+else
+    echo "Error: Python is not functioning correctly."
+    echo "If you are on Windows, try turning off 'App execution aliases' for Python in settings."
+    exit 1
+fi
+
 PROFILE=""
 REGION="us-east-1"
 STACK_NAME=""
@@ -125,7 +138,7 @@ for BUCKET in "$DATA_BUCKET" "$FEEDBACK_BUCKET" "$LAMBDA_ARTIFACT_BUCKET"; do
   if [[ -n "$BUCKET" ]]; then
     echo "  Emptying $BUCKET ..."
     aws "${PROFILE_ARG[@]}" s3 rm "s3://$BUCKET" --recursive --region "$REGION" 2>/dev/null || true
-    python3 - << INNER
+    $PYTHON_CMD - << INNER
 import boto3, os, sys
 profile = os.environ.get('BOTO3_PROFILE', '')
 session = boto3.Session(profile_name=profile or None, region_name='$REGION')
@@ -153,7 +166,7 @@ aws "${PROFILE_ARG[@]}" s3api delete-bucket --bucket "$LAMBDA_ARTIFACT_BUCKET" -
 # NOTE: KB must be deleted BEFORE the S3 Vector store, otherwise KB deletion fails
 echo ""
 echo "=== [3/8] Deleting Bedrock Knowledge Base ==="
-python3 - << PYEOF
+$PYTHON_CMD - << PYEOF
 import boto3, os, time
 
 profile = os.environ.get('BOTO3_PROFILE', '')
@@ -193,7 +206,7 @@ PYEOF
 # ── [4/8] Delete Bedrock Guardrail ───────────────────────────────────────────
 echo ""
 echo "=== [4/8] Deleting Bedrock Guardrail ==="
-python3 - << PYEOF
+$PYTHON_CMD - << PYEOF
 import boto3, os
 
 profile = os.environ.get('BOTO3_PROFILE', '')
@@ -216,7 +229,7 @@ PYEOF
 # ── [5/8] Delete S3 Vector Bucket & Index ────────────────────────────────────
 echo ""
 echo "=== [5/8] Deleting S3 Vector Bucket & Index ==="
-python3 - << PYEOF
+$PYTHON_CMD - << PYEOF
 import boto3, os, time
 
 profile = os.environ.get('BOTO3_PROFILE', '')
@@ -250,7 +263,7 @@ PYEOF
 # ── [6/8] Delete SageMaker resources ─────────────────────────────────────────
 echo ""
 echo "=== [6/8] Deleting SageMaker resources ==="
-python3 - << PYEOF
+$PYTHON_CMD - << PYEOF
 import boto3, os
 
 profile = os.environ.get('BOTO3_PROFILE', '')

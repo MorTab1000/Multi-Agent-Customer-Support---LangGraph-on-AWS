@@ -20,17 +20,35 @@
 #   bash scripts/deploy.sh --profile my-aws-profile
 #   bash scripts/deploy.sh --profile my-profile --region eu-west-1 --suffix abc123
 # ============================================================
+
+# Python Command Detection
+if python3 --version &>/dev/null; then
+    PYTHON_CMD="python3"
+elif python --version &>/dev/null; then
+    PYTHON_CMD="python"
+elif py --version &>/dev/null; then
+    PYTHON_CMD="py"
+else
+    echo "Error: Python is not functioning correctly."
+    echo "If you are on Windows, try turning off 'App execution aliases' for Python in settings."
+    exit 1
+fi
+
+
 set -euo pipefail
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
 PROFILE=""
 REGION="us-east-1"
-SUFFIX="$(python3 -c "import random,string; print(''.join(random.choices(string.ascii_lowercase+string.digits,k=6)))")"
+SUFFIX="$($PYTHON_CMD -c "import random,string; print(''.join(random.choices(string.ascii_lowercase+string.digits,k=6)))")"
 ACCESS_KEY=""
 SECRET_KEY=""
 STACK_NAME=""
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+
+echo "Using Python command: $PYTHON_CMD"
 
 # ── Parse args ────────────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -100,12 +118,12 @@ cd "$REPO_DIR/lambda"
 if command -v zip >/dev/null 2>&1; then
   # Use native zip if available (Linux/Mac)
   zip -q function.zip a2i_completion_handler.py
-elif command -v python3 >/dev/null 2>&1; then
+elif command -v $PYTHON_CMD >/dev/null 2>&1; then
   # Fallback to python3 (Linux CI/CD fallback)
-  python3 -m zipfile -c function.zip a2i_completion_handler.py
+  $PYTHON_CMD -m zipfile -c function.zip a2i_completion_handler.py
 else
   # Fallback to python3 (Windows Git Bash)
-  python3 -m zipfile -c function.zip a2i_completion_handler.py
+  $PYTHON_CMD -m zipfile -c function.zip a2i_completion_handler.py
 fi
 
 cd "$REPO_DIR"
@@ -165,7 +183,7 @@ VECTOR_INDEX_NAME="edu-s3-vector-index-${SUFFIX}"
 VECTOR_BUCKET_ARN="arn:aws:s3vectors:${REGION}:${ACCOUNT_ID}:bucket/${VECTOR_BUCKET_NAME}"
 VECTOR_INDEX_ARN="arn:aws:s3vectors:${REGION}:${ACCOUNT_ID}:bucket/${VECTOR_BUCKET_NAME}/index/${VECTOR_INDEX_NAME}"
 
-python3 - <<PYEOF
+$PYTHON_CMD - <<PYEOF
 import boto3, os, sys, time
 session = boto3.Session(profile_name=os.environ.get("BOTO3_PROFILE") or None, region_name="$REGION")
 s3v = session.client("s3vectors")
@@ -231,7 +249,7 @@ echo "  IAM vector policy updated."
 # ── [4/10] Bedrock Knowledge Base ────────────────────────────────────────────
 echo ""
 echo "=== [4/10] Creating Bedrock Knowledge Base ==="
-KB_ID=$(python3 - <<PYEOF
+KB_ID=$($PYTHON_CMD - <<PYEOF
 import boto3, os, time, sys
 session = boto3.Session(profile_name=os.environ.get("BOTO3_PROFILE") or None, region_name="$REGION")
 bedrock = session.client("bedrock-agent")
@@ -280,7 +298,7 @@ echo "  Knowledge Base ID: $KB_ID"
 # ── [5/10] Data source + sync ────────────────────────────────────────────────
 echo ""
 echo "=== [5/10] Creating data source and syncing course materials ==="
-DS_ID=$(python3 - <<PYEOF
+DS_ID=$($PYTHON_CMD - <<PYEOF
 import boto3, os, time, sys
 session = boto3.Session(profile_name=os.environ.get("BOTO3_PROFILE") or None, region_name="$REGION")
 bedrock = session.client("bedrock-agent")
@@ -360,7 +378,7 @@ echo "  Lambda IAM: bedrock:StartIngestionJob permission added."
 # ── [7/10] SageMaker worker task template ────────────────────────────────────
 echo ""
 echo "=== [7/10] Creating SageMaker worker task template ==="
-TEMPLATE_ARN=$(python3 - <<PYEOF
+TEMPLATE_ARN=$($PYTHON_CMD - <<PYEOF
 import boto3, os, sys
 session = boto3.Session(profile_name=os.environ.get("BOTO3_PROFILE") or None, region_name="$REGION")
 sm = session.client("sagemaker")
@@ -381,7 +399,7 @@ echo "  Worker template ARN: $TEMPLATE_ARN"
 # ── [8/10] Bedrock Guardrail ─────────────────────────────────────────────────
 echo ""
 echo "=== [8/10] Creating Bedrock Guardrail ==="
-GUARDRAIL_INFO=$(python3 - <<PYEOF
+GUARDRAIL_INFO=$($PYTHON_CMD - <<PYEOF
 import boto3, os, json, sys, time
 
 try:
@@ -444,8 +462,8 @@ except Exception as e:
     sys.exit(1)
 PYEOF
 )
-GUARDRAIL_ID=$(echo "$GUARDRAIL_INFO" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
-GUARDRAIL_VERSION=$(echo "$GUARDRAIL_INFO" | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])")
+GUARDRAIL_ID=$(echo "$GUARDRAIL_INFO" | $PYTHON_CMD -c "import sys,json; print(json.load(sys.stdin)['id'])")
+GUARDRAIL_VERSION=$(echo "$GUARDRAIL_INFO" | $PYTHON_CMD -c "import sys,json; print(json.load(sys.stdin)['version'])")
 echo "  Guardrail: $GUARDRAIL_ID  version: $GUARDRAIL_VERSION"
 
 # ── [9/10] Build Docker image and push to ECR ────────────────────────────────
@@ -468,7 +486,7 @@ echo "=== [10/10] Deploying App Runner service ==="
 FLOW_ARN="arn:aws:sagemaker:${REGION}:${ACCOUNT_ID}:flow-definition/escalation-review-workflow-${SUFFIX}"
 SERVICE_NAME="multi-agent-app-${SUFFIX}"
 
-ENV_JSON=$(python3 - <<PYEOF
+ENV_JSON=$($PYTHON_CMD - <<PYEOF
 import json
 print(json.dumps({
     "REGION": "$REGION",
@@ -483,7 +501,7 @@ print(json.dumps({
 PYEOF
 )
 
-SOURCE_CONFIG=$(python3 - <<PYEOF
+SOURCE_CONFIG=$($PYTHON_CMD - <<PYEOF
 import json
 cfg = {
     "ImageRepository": {

@@ -26,6 +26,19 @@
 # ============================================================
 set -euo pipefail
 
+# Python Command Detection
+if python3 --version &>/dev/null; then
+    PYTHON_CMD="python3"
+elif python --version &>/dev/null; then
+    PYTHON_CMD="python"
+elif py --version &>/dev/null; then
+    PYTHON_CMD="py"
+else
+    echo "Error: Python is not functioning correctly."
+    echo "If you are on Windows, try turning off 'App execution aliases' for Python in settings."
+    exit 1
+fi
+
 # ── Configuration — edit these before running ─────────────────────────────────
 PROFILE=""
 REGION="eu-west-1"
@@ -47,7 +60,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Generate suffix if not provided
-[[ -z "$SUFFIX" ]] && SUFFIX="$(python3 -c "import random,string; print(''.join(random.choices(string.ascii_lowercase+string.digits,k=6)))")"
+[[ -z "$SUFFIX" ]] && SUFFIX="$($PYTHON_CMD -c "import random,string; print(''.join(random.choices(string.ascii_lowercase+string.digits,k=6)))")"
 
 # Auth
 if [[ -n "$ACCESS_KEY" && -n "$SECRET_KEY" ]]; then
@@ -300,7 +313,7 @@ sleep 15
 # ── Step 3: S3 Vector bucket + index ─────────────────────────────────────────
 echo ""
 echo "=== [3/12] Creating S3 Vector bucket and index ==="
-python3 - <<PYEOF
+$PYTHON_CMD - <<PYEOF
 import boto3, os, sys
 session = boto3.Session(profile_name=os.environ.get("BOTO3_PROFILE") or None, region_name="$REGION")
 s3v = session.client("s3vectors")
@@ -333,7 +346,7 @@ echo "  Uploaded $COUNT FAQ files to s3://$DATA_BUCKET/"
 # ── Step 5: Bedrock Knowledge Base ───────────────────────────────────────────
 echo ""
 echo "=== [5/12] Creating Bedrock Knowledge Base ==="
-KB_ID=$(python3 - <<PYEOF
+KB_ID=$($PYTHON_CMD - <<PYEOF
 import boto3, os, time, sys
 session = boto3.Session(profile_name=os.environ.get("BOTO3_PROFILE") or None, region_name="$REGION")
 bedrock = session.client("bedrock-agent")
@@ -383,7 +396,7 @@ echo "  Knowledge Base ID: $KB_ID"
 # ── Step 6: Data source + FAQ ingestion ──────────────────────────────────────
 echo ""
 echo "=== [6/12] Creating data source and ingesting FAQs ==="
-DS_ID=$(python3 - <<PYEOF
+DS_ID=$($PYTHON_CMD - <<PYEOF
 import boto3, os, time, sys
 session = boto3.Session(profile_name=os.environ.get("BOTO3_PROFILE") or None, region_name="$REGION")
 bedrock = session.client("bedrock-agent")
@@ -455,7 +468,7 @@ rm -f "$REPO_DIR/lambda/function.zip"
 echo "  Lambda function created: $LAMBDA_ARN"
 
 # Wait for Lambda to be active
-python3 - <<PYEOF
+$PYTHON_CMD - <<PYEOF
 import boto3, os, time
 session = boto3.Session(profile_name=os.environ.get("BOTO3_PROFILE") or None, region_name="$REGION")
 lm = session.client("lambda")
@@ -495,7 +508,7 @@ echo "  Lambda permission added for EventBridge."
 # ── Step 9: SageMaker worker task template ────────────────────────────────────
 echo ""
 echo "=== [9/12] Creating SageMaker worker task template ==="
-TEMPLATE_ARN=$(python3 - <<PYEOF
+TEMPLATE_ARN=$($PYTHON_CMD - <<PYEOF
 import boto3, os, sys
 session = boto3.Session(profile_name=os.environ.get("BOTO3_PROFILE") or None, region_name="$REGION")
 sm = session.client("sagemaker")
@@ -516,7 +529,7 @@ echo "  Worker template ARN: $TEMPLATE_ARN"
 # ── Step 10: Bedrock Guardrail ────────────────────────────────────────────────
 echo ""
 echo "=== [10/12] Creating Bedrock Guardrail ==="
-GUARDRAIL_INFO=$(python3 - <<PYEOF
+GUARDRAIL_INFO=$($PYTHON_CMD - <<PYEOF
 import boto3, os, json, sys
 session = boto3.Session(profile_name=os.environ.get("BOTO3_PROFILE") or None, region_name="$REGION")
 bedrock = session.client("bedrock")
@@ -565,8 +578,8 @@ print(f"  Version published: {version}", file=sys.stderr)
 print(json.dumps({"id": guardrail_id, "version": version}))
 PYEOF
 )
-GUARDRAIL_ID=$(echo "$GUARDRAIL_INFO" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
-GUARDRAIL_VERSION=$(echo "$GUARDRAIL_INFO" | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])")
+GUARDRAIL_ID=$(echo "$GUARDRAIL_INFO" | $PYTHON_CMD -c "import sys,json; print(json.load(sys.stdin)['id'])")
+GUARDRAIL_VERSION=$(echo "$GUARDRAIL_INFO" | $PYTHON_CMD -c "import sys,json; print(json.load(sys.stdin)['version'])")
 echo "  Guardrail: $GUARDRAIL_ID  version: $GUARDRAIL_VERSION"
 
 # ── Step 11: ECR + Docker + push ──────────────────────────────────────────────
@@ -598,7 +611,7 @@ echo ""
 echo "=== [12/12] Creating App Runner service ==="
 
 # Detect correct Nova Pro cross-region inference profile for this region
-NOVA_MODEL_ID=$(python3 - <<PYEOF
+NOVA_MODEL_ID=$($PYTHON_CMD - <<PYEOF
 import boto3, os
 session = boto3.Session(profile_name=os.environ.get("BOTO3_PROFILE") or None, region_name="$REGION")
 bedrock = session.client("bedrock")
@@ -611,7 +624,7 @@ PYEOF
 # FLOW_ARN will be updated after the manual A2I workflow creation step
 FLOW_ARN="arn:aws:sagemaker:${REGION}:${ACCOUNT_ID}:flow-definition/escalation-review-workflow-${SUFFIX}"
 
-ENV_JSON=$(python3 - <<PYEOF
+ENV_JSON=$($PYTHON_CMD - <<PYEOF
 import json
 print(json.dumps({
     "REGION": "$REGION",
@@ -626,7 +639,7 @@ print(json.dumps({
 PYEOF
 )
 
-SOURCE_CONFIG=$(python3 - <<PYEOF
+SOURCE_CONFIG=$($PYTHON_CMD - <<PYEOF
 import json
 cfg = {
     "ImageRepository": {
@@ -649,8 +662,8 @@ CREATE_OUT=$(aws "${PROFILE_ARG[@]}" apprunner create-service \
   --instance-configuration "{\"InstanceRoleArn\":\"$APPRUNNER_INSTANCE_ROLE_ARN\"}" \
   --health-check-configuration '{"Protocol":"HTTP","Path":"/health","Interval":10,"Timeout":5,"HealthyThreshold":1,"UnhealthyThreshold":5}' \
   --region "$REGION")
-SERVICE_URL=$(echo "$CREATE_OUT" | python3 -c "import sys,json; print(json.load(sys.stdin)['Service']['ServiceUrl'])")
-SERVICE_ARN=$(echo "$CREATE_OUT" | python3 -c "import sys,json; print(json.load(sys.stdin)['Service']['ServiceArn'])")
+SERVICE_URL=$(echo "$CREATE_OUT" | $PYTHON_CMD -c "import sys,json; print(json.load(sys.stdin)['Service']['ServiceUrl'])")
+SERVICE_ARN=$(echo "$CREATE_OUT" | $PYTHON_CMD -c "import sys,json; print(json.load(sys.stdin)['Service']['ServiceArn'])")
 
 echo ""
 echo "==================================================="
