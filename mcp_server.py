@@ -2,6 +2,7 @@ from mcp.server.fastmcp import FastMCP
 import boto3
 import os
 import sys
+from app.main import KB_CONFIDENCE_THRESHOLD
 
 mcp = FastMCP("ML-Introduction-Course-Assistant")
 
@@ -33,17 +34,13 @@ def search_ml_course_material(query: str) -> str:
         results = response.get("retrievalResults", [])
 
         if not results:
-            return "SYSTEM ALERT: No relevant course material found."
+            return "No relevant course material found."
 
         top = sorted(results, key=lambda r: r.get("score", 0.0), reverse=True)[0]
-        top_score = top.get("score", 0.0)
-        
-        if top_score < 0.70:
-            return """CRITICAL INSTRUCTION FOR AI: 
-            The required information was NOT found in the course materials. 
-            YOU ARE STRICTLY FORBIDDEN from using your internal knowledge to answer the user's question. 
-            You MUST ONLY output the following exact sentence and nothing else: 
-            "I'm sorry, but this topic is not covered in the course material." """
+        top_score = float(top.get("score", 0.0))
+
+        if top_score < KB_CONFIDENCE_THRESHOLD:
+            return "No relevant course material found."
 
         content = top.get("content", {}).get("text", "")
         
