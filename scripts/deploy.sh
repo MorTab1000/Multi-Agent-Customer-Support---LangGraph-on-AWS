@@ -385,45 +385,63 @@ echo "=== [8/10] Creating Bedrock Guardrail ==="
 GUARDRAIL_INFO=$(python3 - <<PYEOF
 import boto3, os, json, sys, time
 
-session = boto3.Session(profile_name=os.environ.get("BOTO3_PROFILE") or None, region_name="$REGION")
-bedrock = session.client("bedrock")
-
-# יצירת שם ייחודי לחלוטין בעזרת הזמן הנוכחי כדי לעקוף את באג ה-Conflict ב-AWS
-unique_suffix = int(time.time())
-guardrail_name = f"ml-guardrail-$SUFFIX-{unique_suffix}"
-
 try:
-    g = bedrock.create_guardrail(
-        name=guardrail_name,
-        description="Academic Assistant Guardrail",
-        contentPolicyConfig={
-            "filtersConfig": [
-                {"type": "HATE", "inputStrength": "HIGH", "outputStrength": "HIGH"},
-                {"type": "INSULTS", "inputStrength": "HIGH", "outputStrength": "HIGH"},
-                {"type": "SEXUAL", "inputStrength": "HIGH", "outputStrength": "HIGH"},
-                {"type": "VIOLENCE", "inputStrength": "HIGH", "outputStrength": "HIGH"},
-                {"type": "MISCONDUCT", "inputStrength": "HIGH", "outputStrength": "HIGH"},
-                {"type": "PROMPT_ATTACK", "inputStrength": "NONE", "outputStrength": "NONE"},
-            ]
-        },
-        contextualGroundingPolicyConfig={
-            "filtersConfig": [
-                {"type": "GROUNDING", "threshold": 0.3},
-                {"type": "RELEVANCE", "threshold": 0.3},
-            ]
-        },
-        blockedInputMessaging="Question outside course scope.",
-        blockedOutputsMessaging="No reliable answer found.",
-    )
-    guardrail_id = g["guardrailId"]
-    v = bedrock.create_guardrail_version(guardrailIdentifier=guardrail_id, description="v1")
-    version = v["version"]
     
-    print(f"   Success: Unique Guardrail created: {guardrail_id} (v{version})", file=sys.stderr)
-    print(json.dumps({"id": guardrail_id, "version": version}))
+    region = os.environ.get("REGION", "us-east-1")
+    suffix = os.environ.get("SUFFIX", "")
+    
+    session = boto3.Session(profile_name=os.environ.get("BOTO3_PROFILE") or None, region_name=region)
+    bedrock = session.client("bedrock")
+
+    guardrail_name = f"multi-agent-guardrail-{suffix}"
+
+    print(f"Checking for existing guardrail: {guardrail_name}...", file=sys.stderr)
+    existing_guardrails = bedrock.list_guardrails().get('guardrails', [])
+    existing_gr = next((g for g in existing_guardrails if g['name'] == guardrail_name), None)
+
+    if existing_gr:
+        guardrail_id = existing_gr['id']
+        version = existing_gr.get('version', '1')
+        print(f"   Guardrail already exists. Reusing ID: {guardrail_id}", file=sys.stderr)
+        
+        print(json.dumps({"id": guardrail_id, "version": version}))
+        
+    else:
+        print("Creating new guardrail...", file=sys.stderr)
+        g = bedrock.create_guardrail(
+            name=guardrail_name,
+            description="Academic Assistant Guardrail",
+            contentPolicyConfig={
+                "filtersConfig": [
+                    {"type": "HATE", "inputStrength": "HIGH", "outputStrength": "HIGH"},
+                    {"type": "INSULTS", "inputStrength": "HIGH", "outputStrength": "HIGH"},
+                    {"type": "SEXUAL", "inputStrength": "HIGH", "outputStrength": "HIGH"},
+                    {"type": "VIOLENCE", "inputStrength": "HIGH", "outputStrength": "HIGH"},
+                    {"type": "MISCONDUCT", "inputStrength": "HIGH", "outputStrength": "HIGH"},
+                    {"type": "PROMPT_ATTACK", "inputStrength": "NONE", "outputStrength": "NONE"},
+                ]
+            },
+            contextualGroundingPolicyConfig={
+                "filtersConfig": [
+                    {"type": "GROUNDING", "threshold": 0.3},
+                    {"type": "RELEVANCE", "threshold": 0.3},
+                ]
+            },
+            blockedInputMessaging="Question outside course scope.",
+            blockedOutputsMessaging="No reliable answer found.",
+        )
+        guardrail_id = g['guardrailId']
+        print(f"   Created brand new guardrail: {guardrail_id}", file=sys.stderr)
+        
+        v = bedrock.create_guardrail_version(guardrailIdentifier=guardrail_id, description="v1")
+        version = v["version"]
+        
+        print(f"   Success: Unique Guardrail created: {guardrail_id} (v{version})", file=sys.stderr)
+        
+        print(json.dumps({"id": guardrail_id, "version": version}))
 
 except Exception as e:
-    print(f"   Fatal Error creating guardrail: {e}", file=sys.stderr)
+    print(f"   Fatal Error creating guardrail: {e}", file=sys.stderr)
     sys.exit(1)
 PYEOF
 )
