@@ -162,7 +162,7 @@ bedrock = session.client('bedrock-agent')
 
 kbs = bedrock.list_knowledge_bases().get('knowledgeBaseSummaries', [])
 for kb in kbs:
-    if kb['name'] == 'faqs-kb-$SUFFIX':
+    if kb['name'] == 'ml-lectures-kb-$SUFFIX':
         kb_id = kb['knowledgeBaseId']
         print(f"  Found KB: {kb_id}")
         try:
@@ -187,7 +187,7 @@ for kb in kbs:
             time.sleep(5)
         break
 else:
-    print("  No KB named 'faqs-kb-$SUFFIX' found (already deleted).")
+    print("  No KB named 'ml-lectures-kb-$SUFFIX' found (already deleted).")
 PYEOF
 
 # ── [4/8] Delete Bedrock Guardrail ───────────────────────────────────────────
@@ -257,7 +257,7 @@ profile = os.environ.get('BOTO3_PROFILE', '')
 session = boto3.Session(profile_name=profile or None, region_name='$REGION')
 sm = session.client('sagemaker')
 
-for name in ['faq-review-ui-$SUFFIX']:
+for name in ['ml-lectures-ds-review-ui-$SUFFIX']:
     try:
         sm.delete_human_task_ui(HumanTaskUiName=name)
         print(f"  Deleted worker task UI: {name}")
