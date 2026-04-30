@@ -24,6 +24,8 @@ STACK_NAME=""
 SUFFIX=""
 ACCESS_KEY=""
 SECRET_KEY=""
+VECTOR_BUCKET_NAME=""
+VECTOR_INDEX_NAME=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -48,6 +50,10 @@ if [[ -z "$SUFFIX" ]]; then
   exit 1
 fi
 
+# Keep vector naming aligned with deploy.sh
+VECTOR_BUCKET_NAME="edu-s3-vector-${SUFFIX}"
+VECTOR_INDEX_NAME="edu-s3-vector-index-${SUFFIX}"
+
 # ── Auth setup ────────────────────────────────────────────────────────────────
 if [[ -n "$ACCESS_KEY" && -n "$SECRET_KEY" ]]; then
   export AWS_ACCESS_KEY_ID="$ACCESS_KEY"
@@ -68,6 +74,7 @@ fi
 echo "==================================================="
 echo " DESTROY: auth=$AUTH_DISPLAY  region=$REGION"
 echo "          stack=$STACK_NAME  suffix=$SUFFIX"
+echo "          vector_bucket=$VECTOR_BUCKET_NAME  vector_index=$VECTOR_INDEX_NAME"
 echo "==================================================="
 read -rp "Are you sure you want to delete all resources? (yes/no): " CONFIRM
 CONFIRM="${CONFIRM//$'\r'/}"
@@ -215,19 +222,29 @@ import boto3, os, time
 profile = os.environ.get('BOTO3_PROFILE', '')
 session = boto3.Session(profile_name=profile or None, region_name='$REGION')
 s3v = session.client('s3vectors')
+vector_bucket = "$VECTOR_BUCKET_NAME"
+vector_index = "$VECTOR_INDEX_NAME"
 
 try:
-    s3v.delete_index(vectorBucketName='edu-s3-vector', indexName='edu-s3-vector-index')
-    print("  Deleted vector index edu-s3-vector-index")
+    s3v.delete_index(vectorBucketName=vector_bucket, indexName=vector_index)
+    print(f"  Deleted vector index {vector_index}")
     time.sleep(5)
 except Exception as e:
-    print(f"  Index delete: {e}")
+    msg = str(e)
+    if "NotFound" in msg or "ResourceNotFound" in msg:
+        print(f"  Vector index {vector_index} not found (already deleted).")
+    else:
+        print(f"  Index delete warning for {vector_index}: {e}")
 
 try:
-    s3v.delete_vector_bucket(vectorBucketName='edu-s3-vector')
-    print("  Deleted vector bucket edu-s3-vector")
+    s3v.delete_vector_bucket(vectorBucketName=vector_bucket)
+    print(f"  Deleted vector bucket {vector_bucket}")
 except Exception as e:
-    print(f"  Bucket delete: {e}")
+    msg = str(e)
+    if "NotFound" in msg or "ResourceNotFound" in msg:
+        print(f"  Vector bucket {vector_bucket} not found (already deleted).")
+    else:
+        print(f"  Bucket delete warning for {vector_bucket}: {e}")
 PYEOF
 
 # ── [6/8] Delete SageMaker resources ─────────────────────────────────────────
