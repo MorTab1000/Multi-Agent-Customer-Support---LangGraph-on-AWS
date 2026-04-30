@@ -67,7 +67,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      - - name: Deploy to AWS
+      - name: Deploy to AWS
         run: |
           chmod +x scripts/deploy.sh
           ./scripts/deploy.sh --stack multi-agent-lab-${{ vars.PROJECT_SUFFIX }} --suffix ${{ vars.PROJECT_SUFFIX }} --region ${{ vars.AWS_REGION }} --access-key ${{ secrets.AWS_ACCESS_KEY_ID }} --secret-key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
