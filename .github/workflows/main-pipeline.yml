@@ -44,7 +44,7 @@ jobs:
           KNOWLEDGE_BASE_ID: ${{ vars.KNOWLEDGE_BASE_ID }}
           GUARDRAIL_ID: ${{ vars.GUARDRAIL_ID }}
           GUARDRAIL_VERSION: ${{ vars.GUARDRAIL_VERSION }}
-          FLOW_DEFINITION_ARN: ${{ vars.FLOW_DEFINITION_ARN }}
+          FLOW_ARN: ${{ vars.FLOW_DEFINITION_ARN }}
           FEEDBACK_BUCKET: ${{ vars.FEEDBACK_BUCKET }}
           DATA_BUCKET: ${{ vars.DATA_BUCKET }}
           DATA_SOURCE_ID: ${{  vars.DATA_SOURCE_ID  }}
