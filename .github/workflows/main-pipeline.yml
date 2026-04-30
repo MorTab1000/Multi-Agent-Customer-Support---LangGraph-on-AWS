@@ -70,5 +70,6 @@ jobs:
 
       - name: Deploy to AWS
         run: |
+          python3 -m pip install --upgrade boto3 botocore
           chmod +x scripts/deploy.sh
           ./scripts/deploy.sh --stack multi-agent-lab-${{ vars.PROJECT_SUFFIX }} --suffix ${{ vars.PROJECT_SUFFIX }} --region ${{ vars.AWS_REGION }} --access-key ${{ secrets.AWS_ACCESS_KEY_ID }} --secret-key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
