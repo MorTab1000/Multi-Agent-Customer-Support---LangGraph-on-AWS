@@ -126,7 +126,7 @@ for BUCKET in "$DATA_BUCKET" "$FEEDBACK_BUCKET" "$LAMBDA_ARTIFACT_BUCKET"; do
     echo "  Emptying $BUCKET ..."
     aws "${PROFILE_ARG[@]}" s3 rm "s3://$BUCKET" --recursive --region "$REGION" 2>/dev/null || true
     python3 - << INNER
-import boto3, os
+import boto3, os, sys
 profile = os.environ.get('BOTO3_PROFILE', '')
 session = boto3.Session(profile_name=profile or None, region_name='$REGION')
 s3 = session.client('s3')
@@ -139,7 +139,7 @@ try:
             count += 1
     print(f'    Deleted {count} versions') if count else print('    (nothing to version-delete)')
 except Exception as e:
-    pass
+    print(f"    Warning: Error deleting versions in bucket: {e}", file=sys.stderr)
 INNER
     echo "  $BUCKET emptied."
   fi
