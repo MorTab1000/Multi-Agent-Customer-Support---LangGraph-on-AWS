@@ -6,7 +6,7 @@ from langgraph.graph import StateGraph, END
 import time, json
 
 # -----------------------
-# Configuration (env-var injectable for App Runner)
+# Configuration (env-var injectable for App Runner) 
 # -----------------------
 REGION = os.environ.get("REGION")
 KNOWLEDGE_BASE_ID = os.environ.get("KNOWLEDGE_BASE_ID")
@@ -21,6 +21,20 @@ KB_CONFIDENCE_THRESHOLD = 0.7
 
 GUARDRAIL_ID = os.environ.get("GUARDRAIL_ID")
 GUARDRAIL_VERSION = os.environ.get("GUARDRAIL_VERSION", "1")
+
+# Validate required variables before starting the application
+missing_vars = []
+if not REGION:
+    missing_vars.append("REGION")
+if not KNOWLEDGE_BASE_ID:
+    missing_vars.append("KNOWLEDGE_BASE_ID")
+if not FLOW_ARN:
+    missing_vars.append("FLOW_ARN")
+if not GUARDRAIL_ID:
+    missing_vars.append("GUARDRAIL_ID")
+
+if missing_vars:
+    raise ValueError(f"CRITICAL ERROR: Missing required environment variables: {', '.join(missing_vars)}. The application cannot start.")
 
 # -----------------------
 # AWS Clients
