@@ -151,7 +151,7 @@ echo ""
 echo "=== [2/10] Uploading course material files ==="
 if [ -d "$REPO_DIR/data/pdfs/" ]; then
     echo "  Uploading files from $REPO_DIR/data/pdfs/ to S3..."
-    aws s3 cp "$REPO_DIR/data/pdfs/" "s3://$DATA_BUCKET/main_data/" --recursive --region "$REGION"
+    aws "${PROFILE_ARG[@]}" s3 cp "$REPO_DIR/data/pdfs/" "s3://$DATA_BUCKET/main_data/" --recursive --region "$REGION"
 else
     echo "  [WARNING] Directory $REPO_DIR/data/pdfs/ not found. Skipping upload."
     echo "  Make sure you have uploaded the course materials manually to: s3://$DATA_BUCKET/main_data/"
