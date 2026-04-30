@@ -100,15 +100,14 @@ cd "$REPO_DIR/lambda"
 if command -v zip >/dev/null 2>&1; then
   # Use native zip if available (Linux/Mac)
   zip -q function.zip a2i_completion_handler.py
-elif command -v python33 >/dev/null 2>&1; then
-  # Fallback to python33 (Linux CI/CD fallback)
+elif command -v python3 >/dev/null 2>&1; then
+  # Fallback to python3 (Linux CI/CD fallback)
   python3 -m zipfile -c function.zip a2i_completion_handler.py
 else
   # Fallback to python3 (Windows Git Bash)
   python3 -m zipfile -c function.zip a2i_completion_handler.py
 fi
 
-cd "$REPO_DIR"
 cd "$REPO_DIR"
 aws "${PROFILE_ARG[@]}" s3 cp "$REPO_DIR/lambda/function.zip" \
   "s3://${LAMBDA_ARTIFACT_BUCKET}/${LAMBDA_ARTIFACT_KEY}" \
