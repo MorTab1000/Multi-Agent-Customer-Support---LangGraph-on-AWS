@@ -23,7 +23,7 @@ load_dotenv()
 from app.main import (
     app,
     generate_final_answer,
-    GUARDRAIL_ID, GUARDRAIL_VERSION,
+    GUARDRAIL_ID, GUARDRAIL_VERSION, KB_CONFIDENCE_THRESHOLD,
     _session,
 )
 
@@ -118,7 +118,7 @@ def test_full_pipeline_high_confidence():
     confidence = result["confidence"]
     print(f"  Confidence : {confidence:.3f}")
     print(f"  Answer     : {answer[:200]}")
-    check(confidence >= 0.75, f"KB confidence is high (got {confidence:.3f})")
+    check(confidence >= KB_CONFIDENCE_THRESHOLD, f"KB confidence is high (got {confidence:.3f})")
     check(answer not in ("[Error generating response]", ""),
           "LLM returned a real answer")
     check("supervised" in answer.lower() or "unsupervised" in answer.lower(),
@@ -134,7 +134,7 @@ def test_full_pipeline_low_confidence():
     confidence = result["confidence"]
     print(f"  Confidence : {confidence:.3f}")
     print(f"  Answer     : {answer[:200]}")
-    check(confidence < 0.75, f"KB confidence is low as expected (got {confidence:.3f})")
+    check(confidence < KB_CONFIDENCE_THRESHOLD, f"KB confidence is low as expected (got {confidence:.3f})")
     # Either escalated to human or got the fallback message
     check(True, "Low-confidence question handled (escalated or fallback returned)")
 
