@@ -48,6 +48,7 @@ jobs:
           FEEDBACK_BUCKET: ${{ vars.FEEDBACK_BUCKET }}
           DATA_BUCKET: ${{ vars.DATA_BUCKET }}
           DATA_SOURCE_ID: ${{  vars.DATA_SOURCE_ID  }}
+          REGION: vars.AWS_REGION
         run: |
           python tests/test_guardrails.py
           python tests/test_feedback_loop.py
