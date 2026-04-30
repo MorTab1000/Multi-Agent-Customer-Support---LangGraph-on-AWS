@@ -1,11 +1,14 @@
 import os
-import json
 import boto3
 from fastapi import FastAPI
 from pydantic import BaseModel
-from app.main import app as graph_app, REGION, GUARDRAIL_ID, GUARDRAIL_VERSION
+from app.main import (
+    app as graph_app,
+    REGION,
+    KB_CONFIDENCE_THRESHOLD,
+)
 
-api = FastAPI(title="Multi-Agent Customer Support API")
+api = FastAPI(title="Academic Assistant API")
 
 _session = boto3.Session(
     profile_name=os.environ.get("AWS_PROFILE") or None,
@@ -14,21 +17,24 @@ _session = boto3.Session(
 _bedrock = _session.client("bedrock-runtime")
 
 OFF_TOPIC_MSG = (
-    "I can only answer questions about Leumi Trade, investing, trading, or financial markets. "
+    "I can only answer questions related to the 'Machine Learning Introduction' course lectures. "
     "Please ask a relevant question."
 )
 
 _DOMAIN_SYSTEM = (
-    "You are a domain classifier for a financial trading platform called Leumi Trade. "
-    "Decide if the user question is related to: investing, trading, financial markets, "
-    "stock exchanges, Leumi Trade platform features, portfolio management, trading accounts, "
-    "fees, or banking investment services. "
+    "You are a domain classifier for a course called 'Machine Learning Introduction'. "
+    "Decide if the user question is related to machine learning concepts. "
+    "CRITICAL INSTRUCTION: Be semantically flexible. If a user asks about 'learning techniques', "
+    "'memorization', 'methods', or 'algorithms', you MUST treat it as a machine learning concept "
+    "(e.g., algorithmic memorization vs. generalization). "
+    "Topics include supervised/unsupervised learning, overfitting, underfitting, evaluation metrics, and algorithms. "
+    "If the user asks about completely unrelated domains (e.g., finance, politics, sports, general chit-chat), answer NO. "
     "Reply with exactly one word: YES if related, NO if not."
 )
 
 
 def _is_in_domain(question: str) -> bool:
-    """Returns True if the question is about investing/Leumi Trade, False otherwise."""
+    """Returns True if the question is about the Machine Learning Introduction course."""
     try:
         response = _bedrock.converse(
             modelId="us.amazon.nova-pro-v1:0",
@@ -65,7 +71,7 @@ def ask(req: AskRequest):
         return AskResponse(answer=OFF_TOPIC_MSG, confidence=0.0, escalated=False)
 
     result = graph_app.invoke({"question": req.question})
-    escalated = result.get("confidence", 1.0) < 0.75
+    escalated = result.get("confidence", 1.0) < KB_CONFIDENCE_THRESHOLD
     return AskResponse(
         answer=result.get("final_answer", ""),
         confidence=result.get("confidence", 0.0),

@@ -6,7 +6,7 @@ from langgraph.graph import StateGraph, END
 import time, json
 
 # -----------------------
-# Configuration (env-var injectable for App Runner)
+# Configuration (env-var injectable for App Runner) 
 # -----------------------
 REGION = os.environ.get("REGION")
 KNOWLEDGE_BASE_ID = os.environ.get("KNOWLEDGE_BASE_ID")
@@ -17,10 +17,24 @@ FLOW_ARN = os.environ.get("FLOW_ARN")
 
 KB_NUM_RESULTS = 5
 KB_OVERRIDE_SEARCH_TYPE = "SEMANTIC"
-KB_CONFIDENCE_THRESHOLD = 0.75
+KB_CONFIDENCE_THRESHOLD = 0.7
 
-GUARDRAIL_ID = os.environ.get("GUARDRAIL_ID", "uu2xo2tebez1")
+GUARDRAIL_ID = os.environ.get("GUARDRAIL_ID")
 GUARDRAIL_VERSION = os.environ.get("GUARDRAIL_VERSION", "1")
+
+# Validate required variables before starting the application
+missing_vars = []
+if not REGION:
+    missing_vars.append("REGION")
+if not KNOWLEDGE_BASE_ID:
+    missing_vars.append("KNOWLEDGE_BASE_ID")
+if not FLOW_ARN:
+    missing_vars.append("FLOW_ARN")
+if not GUARDRAIL_ID:
+    missing_vars.append("GUARDRAIL_ID")
+
+if missing_vars:
+    raise ValueError(f"CRITICAL ERROR: Missing required environment variables: {', '.join(missing_vars)}. The application cannot start.")
 
 # -----------------------
 # AWS Clients
@@ -63,7 +77,7 @@ def supervisor_router(state: AgentState):
 def knowledge_agent(state: AgentState):
     query = state["question"]
     print(f"KB Agent: Searching knowledge base for '{query}'...")
-    kb_answer = "No relevant FAQ found."
+    kb_answer = "No relevant course material found."
     confidence = 0.0
     try:
         response = bedrock_agent_runtime.retrieve(
@@ -129,28 +143,33 @@ def generate_final_answer(state: AgentState):
     print("Final Generator: Synthesizing final response with LLM...")
 
     # Confidence floor: don't let the LLM improvise when KB has nothing useful
-    if state["kb_answer"] in ("No relevant FAQ found.", "Error retrieving from knowledge base."):
+    if state["kb_answer"] in ("No relevant course material found.", "Error retrieving from knowledge base."):
         print("Final Generator: KB answer is empty — skipping LLM to avoid hallucination, escalating.")
         return {"final_answer": (
-            "I don't have enough information in our knowledge base to answer this accurately. "
-            "I'm escalating your question to our support team for a reliable response."
+            "I don't have enough information in the course materials to answer this accurately. "
+            "I'm escalating your question to the course TAs for a reliable response."
         )}
 
     # Hardened prompt: constrain the LLM to the KB source only
     prompt = ChatPromptTemplate.from_messages([
-        ("system",
-         "You are a helpful and empathetic customer support agent. "
-         "You MUST base your response ONLY on the FAQ Answer provided below. "
-         "Do NOT add information that is not present in the FAQ Answer. "
-         "If the FAQ Answer does not fully address the question, say so honestly "
-         "and suggest the customer contact the support team directly. "
-         "Do NOT speculate, invent details, or answer from general knowledge."),
-        ("human",
-         "Customer Question: {question}\n"
-         "Detected Sentiment: {sentiment}\n"
-         "FAQ Answer: {kb_answer}\n\n"
-         "Write a polite, professional response using only the FAQ Answer above.")
-    ])
+    ("system",
+     "You are an expert academic assistant for the 'Machine Learning Introduction' course at Ben-Gurion University. "
+     "Your goal is to provide deep, professional, and accurate answers based on the provided Course Material Excerpt. "
+     
+     "### INSTRUCTION TUNING RULES: "
+     "1. **Semantic Flexibility**: Terminology may vary. If a student asks about a 'technique' or 'method', relate it to the 'algorithms' in the text (e.g., 'Memorize algorithm'). "
+     "2. **Logical Inference**: If the excerpt mentions a concept briefly (e.g., 'Underfitting is related to approximation error'), use your expertise to explain that connection clearly based on the context. "
+     "3. **Mathematical Precision**: Use LaTeX for all formulas and notations. For example, use $err(h, D)$ for error or $m$ for sample size, as seen in the materials[cite: 85, 203]. "
+     "4. **Depth over Safety**: Do not be overly restrictive. If the excerpt contains the core answer, expand on it professionally. Only escalate to TAs if the excerpt is truly irrelevant to the topic. "
+     "5. **Response Format**: Structure your answer with clear headings and bold terms. "
+     "6. **Strict Refusals**: If the Student Question is completely unrelated to the Course Material Excerpt (e.g., asking for a recipe), you must output EXACTLY: 'I couldn't find a reliable answer in the provided course materials.' Do not add any formatting, markdown, or explanations."),
+    
+    ("human",
+     "Student Question: {question}\n"
+     "Detected Sentiment: {sentiment}\n"
+     "Course Material Excerpt: {kb_answer}\n\n"
+     "Using the excerpt provided, write a comprehensive academic response. ")
+])
     messages = prompt.format_messages(
         question=state["question"],
         sentiment=state["sentiment"],
@@ -175,8 +194,8 @@ def generate_final_answer(state: AgentState):
         if not final_answer or final_answer.strip() == "":
             print("Final Generator: Guardrail blocked the response.")
             final_answer = (
-                "I wasn't able to generate a reliable answer based on our knowledge base. "
-                "Please contact our support team directly for assistance."
+                "I wasn't able to generate a reliable answer based on the provided course materials. "
+                "Please ask the teaching staff or instructor for assistance."
             )
         else:
             print(f"Final Generator: Response generated ({len(final_answer)} chars).")
@@ -194,8 +213,8 @@ def human_agent(state: AgentState):
     print("Human Agent: Escalating to A2I...")
     loop_name = f"loop-{int(time.time())}"
     final_answer = (
-        "Your question has been escalated to our human review team. "
-        "The answer will be automatically added to our knowledge base once reviewed."
+        "Your question has been escalated to the course TAs. "
+        "Once they provide an answer, it will be automatically added to the course knowledge base for future reference."
     )
     try:
         a2i.start_human_loop(
@@ -203,7 +222,7 @@ def human_agent(state: AgentState):
             FlowDefinitionArn=FLOW_ARN,
             HumanLoopInput={"InputContent": json.dumps({
                 "question": state["question"],
-                "faq_suggestion": state["kb_answer"]
+                "material_suggestion": state["kb_answer"]
             })},
         )
         print(f"  Escalation started → loop: {loop_name}")

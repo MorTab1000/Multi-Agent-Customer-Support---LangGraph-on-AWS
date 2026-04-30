@@ -19,11 +19,13 @@
 set -euo pipefail
 
 PROFILE=""
-REGION="eu-west-1"
+REGION="us-east-1"
 STACK_NAME=""
 SUFFIX=""
 ACCESS_KEY=""
 SECRET_KEY=""
+VECTOR_BUCKET_NAME=""
+VECTOR_INDEX_NAME=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -48,6 +50,10 @@ if [[ -z "$SUFFIX" ]]; then
   exit 1
 fi
 
+# Keep vector naming aligned with deploy.sh
+VECTOR_BUCKET_NAME="edu-s3-vector-${SUFFIX}"
+VECTOR_INDEX_NAME="edu-s3-vector-index-${SUFFIX}"
+
 # ── Auth setup ────────────────────────────────────────────────────────────────
 if [[ -n "$ACCESS_KEY" && -n "$SECRET_KEY" ]]; then
   export AWS_ACCESS_KEY_ID="$ACCESS_KEY"
@@ -68,8 +74,10 @@ fi
 echo "==================================================="
 echo " DESTROY: auth=$AUTH_DISPLAY  region=$REGION"
 echo "          stack=$STACK_NAME  suffix=$SUFFIX"
+echo "          vector_bucket=$VECTOR_BUCKET_NAME  vector_index=$VECTOR_INDEX_NAME"
 echo "==================================================="
 read -rp "Are you sure you want to delete all resources? (yes/no): " CONFIRM
+CONFIRM="${CONFIRM//$'\r'/}"
 [[ "$CONFIRM" == "yes" ]] || { echo "Aborted."; exit 0; }
 
 # ── Resolve bucket names from CFN outputs ────────────────────────────────────
@@ -104,15 +112,21 @@ else
   echo "  App Runner service not found (already deleted)."
 fi
 
-# ── [2/8] Empty S3 buckets ───────────────────────────────────────────────────
+# ── [2/8] Empty (and delete custom) S3 buckets ───────────────────────────────
 echo ""
 echo "=== [2/8] Emptying S3 buckets ==="
-for BUCKET in "$DATA_BUCKET" "$FEEDBACK_BUCKET"; do
+
+# Get Account ID for the artifact bucket name
+ACCOUNT_ID=$(aws "${PROFILE_ARG[@]}" sts get-caller-identity \
+  --query Account --output text --region "$REGION")
+LAMBDA_ARTIFACT_BUCKET="multi-agent-artifacts-${ACCOUNT_ID}-${REGION}-${SUFFIX}"
+
+for BUCKET in "$DATA_BUCKET" "$FEEDBACK_BUCKET" "$LAMBDA_ARTIFACT_BUCKET"; do
   if [[ -n "$BUCKET" ]]; then
     echo "  Emptying $BUCKET ..."
     aws "${PROFILE_ARG[@]}" s3 rm "s3://$BUCKET" --recursive --region "$REGION" 2>/dev/null || true
     python3 - << INNER
-import boto3, os
+import boto3, os, sys
 profile = os.environ.get('BOTO3_PROFILE', '')
 session = boto3.Session(profile_name=profile or None, region_name='$REGION')
 s3 = session.client('s3')
@@ -125,11 +139,15 @@ try:
             count += 1
     print(f'    Deleted {count} versions') if count else print('    (nothing to version-delete)')
 except Exception as e:
-    print(f'    {e}')
+    print(f"    Warning: Error deleting versions in bucket: {e}", file=sys.stderr)
 INNER
     echo "  $BUCKET emptied."
   fi
 done
+
+# Delete the Artifact bucket (since CFN doesn't manage it)
+echo "  Deleting Artifact bucket: $LAMBDA_ARTIFACT_BUCKET"
+aws "${PROFILE_ARG[@]}" s3api delete-bucket --bucket "$LAMBDA_ARTIFACT_BUCKET" --region "$REGION" 2>/dev/null || true
 
 # ── [3/8] Delete Bedrock Knowledge Base ──────────────────────────────────────
 # NOTE: KB must be deleted BEFORE the S3 Vector store, otherwise KB deletion fails
@@ -144,7 +162,7 @@ bedrock = session.client('bedrock-agent')
 
 kbs = bedrock.list_knowledge_bases().get('knowledgeBaseSummaries', [])
 for kb in kbs:
-    if kb['name'] == 'faqs-kb-$SUFFIX':
+    if kb['name'] == 'ml-lectures-kb-$SUFFIX':
         kb_id = kb['knowledgeBaseId']
         print(f"  Found KB: {kb_id}")
         try:
@@ -169,7 +187,7 @@ for kb in kbs:
             time.sleep(5)
         break
 else:
-    print("  No KB named 'faqs-kb-$SUFFIX' found (already deleted).")
+    print("  No KB named 'ml-lectures-kb-$SUFFIX' found (already deleted).")
 PYEOF
 
 # ── [4/8] Delete Bedrock Guardrail ───────────────────────────────────────────
@@ -204,19 +222,29 @@ import boto3, os, time
 profile = os.environ.get('BOTO3_PROFILE', '')
 session = boto3.Session(profile_name=profile or None, region_name='$REGION')
 s3v = session.client('s3vectors')
+vector_bucket = "$VECTOR_BUCKET_NAME"
+vector_index = "$VECTOR_INDEX_NAME"
 
 try:
-    s3v.delete_index(vectorBucketName='edu-s3-vector', indexName='edu-s3-vector-index')
-    print("  Deleted vector index edu-s3-vector-index")
+    s3v.delete_index(vectorBucketName=vector_bucket, indexName=vector_index)
+    print(f"  Deleted vector index {vector_index}")
     time.sleep(5)
 except Exception as e:
-    print(f"  Index delete: {e}")
+    msg = str(e)
+    if "NotFound" in msg or "ResourceNotFound" in msg:
+        print(f"  Vector index {vector_index} not found (already deleted).")
+    else:
+        print(f"  Index delete warning for {vector_index}: {e}")
 
 try:
-    s3v.delete_vector_bucket(vectorBucketName='edu-s3-vector')
-    print("  Deleted vector bucket edu-s3-vector")
+    s3v.delete_vector_bucket(vectorBucketName=vector_bucket)
+    print(f"  Deleted vector bucket {vector_bucket}")
 except Exception as e:
-    print(f"  Bucket delete: {e}")
+    msg = str(e)
+    if "NotFound" in msg or "ResourceNotFound" in msg:
+        print(f"  Vector bucket {vector_bucket} not found (already deleted).")
+    else:
+        print(f"  Bucket delete warning for {vector_bucket}: {e}")
 PYEOF
 
 # ── [6/8] Delete SageMaker resources ─────────────────────────────────────────
@@ -229,7 +257,7 @@ profile = os.environ.get('BOTO3_PROFILE', '')
 session = boto3.Session(profile_name=profile or None, region_name='$REGION')
 sm = session.client('sagemaker')
 
-for name in ['faq-review-ui-$SUFFIX']:
+for name in ['ml-lectures-ds-review-ui-$SUFFIX']:
     try:
         sm.delete_human_task_ui(HumanTaskUiName=name)
         print(f"  Deleted worker task UI: {name}")

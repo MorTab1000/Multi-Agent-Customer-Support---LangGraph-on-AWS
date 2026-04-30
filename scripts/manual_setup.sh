@@ -77,10 +77,10 @@ ECR_REPO_NAME="multi-agent-app-${SUFFIX}"
 KB_NAME="faqs-kb-${SUFFIX}"
 DS_NAME="faqs-ds-${SUFFIX}"
 SERVICE_NAME="multi-agent-app-${SUFFIX}"
-GUARDRAIL_NAME="guardrail-${SUFFIX}"
+GUARDRAIL_NAME="multi-agent-guardrail-${SUFFIX}"
 
-VECTOR_BUCKET="edu-s3-vector"
-VECTOR_INDEX="edu-s3-vector-index"
+VECTOR_BUCKET_NAME="edu-s3-vector-${SUFFIX}"
+VECTOR_INDEX_NAME="edu-s3-vector-index-${SUFFIX}"
 
 echo "==================================================="
 echo " MANUAL SETUP — multi-agent lab"
@@ -90,8 +90,8 @@ echo "==================================================="
 # ── Validate credentials ──────────────────────────────────────────────────────
 ACCOUNT_ID=$(aws "${PROFILE_ARG[@]}" sts get-caller-identity \
   --query Account --output text --region "$REGION")
-VECTOR_BUCKET_ARN="arn:aws:s3vectors:${REGION}:${ACCOUNT_ID}:bucket/${VECTOR_BUCKET}"
-VECTOR_INDEX_ARN="arn:aws:s3vectors:${REGION}:${ACCOUNT_ID}:bucket/${VECTOR_BUCKET}/index/${VECTOR_INDEX}"
+VECTOR_BUCKET_NAME_ARN="arn:aws:s3vectors:${REGION}:${ACCOUNT_ID}:bucket/${VECTOR_BUCKET_NAME}"
+VECTOR_INDEX_NAME_ARN="arn:aws:s3vectors:${REGION}:${ACCOUNT_ID}:bucket/${VECTOR_BUCKET_NAME}/index/${VECTOR_INDEX_NAME}"
 echo "  Account: $ACCOUNT_ID  Region: $REGION"
 
 # ── Step 1: S3 Buckets ────────────────────────────────────────────────────────
@@ -174,7 +174,7 @@ aws "${PROFILE_ARG[@]}" iam put-role-policy \
         \"s3vectors:ListVectors\",\"s3vectors:GetIndex\",
         \"s3vectors:GetVectorBucket\"
       ],
-      \"Resource\": [\"$VECTOR_BUCKET_ARN\", \"$VECTOR_INDEX_ARN\"]
+      \"Resource\": [\"$VECTOR_BUCKET_NAME_ARN\", \"$VECTOR_INDEX_NAME_ARN\"]
     }]
   }" > /dev/null
 KB_ROLE_ARN=$(aws "${PROFILE_ARG[@]}" iam get-role --role-name "$KB_ROLE_NAME" \
@@ -306,19 +306,19 @@ session = boto3.Session(profile_name=os.environ.get("BOTO3_PROFILE") or None, re
 s3v = session.client("s3vectors")
 
 try:
-    s3v.create_vector_bucket(vectorBucketName="$VECTOR_BUCKET")
-    print("  Vector bucket created: $VECTOR_BUCKET")
+    s3v.create_VECTOR_BUCKET_NAME(vectorBucketName="$VECTOR_BUCKET_NAME")
+    print("  Vector bucket created: $VECTOR_BUCKET_NAME")
 except s3v.exceptions.ConflictException:
-    print("  Vector bucket already exists: $VECTOR_BUCKET")
+    print("  Vector bucket already exists: $VECTOR_BUCKET_NAME")
 except Exception as e:
     print(f"  ERROR: {e}", file=sys.stderr); sys.exit(1)
 
 try:
-    s3v.create_index(vectorBucketName="$VECTOR_BUCKET", indexName="$VECTOR_INDEX",
+    s3v.create_index(vectorBucketName="$VECTOR_BUCKET_NAME", indexName="$VECTOR_INDEX_NAME",
                      dataType="float32", dimension=1024, distanceMetric="cosine")
-    print("  Vector index created: $VECTOR_INDEX")
+    print("  Vector index created: $VECTOR_INDEX_NAME")
 except s3v.exceptions.ConflictException:
-    print("  Vector index already exists: $VECTOR_INDEX")
+    print("  Vector index already exists: $VECTOR_INDEX_NAME")
 except Exception as e:
     print(f"  ERROR: {e}", file=sys.stderr); sys.exit(1)
 PYEOF
@@ -360,8 +360,8 @@ kb = bedrock.create_knowledge_base(
     storageConfiguration={
         "type": "S3_VECTORS",
         "s3VectorsConfiguration": {
-            "vectorBucketArn": "$VECTOR_BUCKET_ARN",
-            "indexArn": "$VECTOR_INDEX_ARN"
+            "vectorBucketArn": "$VECTOR_BUCKET_NAME_ARN",
+            "indexArn": "$VECTOR_INDEX_NAME_ARN"
         }
     }
 )
@@ -403,7 +403,7 @@ else:
         vectorIngestionConfiguration={
             "chunkingConfiguration": {
                 "chunkingStrategy": "FIXED_SIZE",
-                "fixedSizeChunkingConfiguration": {"maxTokens": 300, "overlapPercentage": 20}
+                "fixedSizeChunkingConfiguration": {"maxTokens": 300, "overlapPercentage": 25}
             }
         }
     )
@@ -535,7 +535,7 @@ if existing:
 # Create guardrail with content filters + contextual grounding
 g = bedrock.create_guardrail(
     name="$GUARDRAIL_NAME",
-    description="Content safety + anti-hallucination for multi-agent customer support",
+    description="Content safety and anti-hallucination for Computer Science Academic Assistant for Machine Learning Introduction course",
     contentPolicyConfig={
         "filtersConfig": [
             {"type": "HATE",        "inputStrength": "HIGH", "outputStrength": "HIGH"},
@@ -552,8 +552,8 @@ g = bedrock.create_guardrail(
             {"type": "RELEVANCE",  "threshold": 0.7},
         ]
     },
-    blockedInputMessaging="I cannot process this input.",
-    blockedOutputsMessaging="I wasn't able to generate a reliable answer. Please contact support.",
+    blockedInputMessaging="This question is outside the scope of this course materials.",
+    blockedOutputsMessaging="I couldn't find a reliable answer in the provided course materials.",
 )
 guardrail_id = g["guardrailId"]
 print(f"  Guardrail created: {guardrail_id}", file=sys.stderr)

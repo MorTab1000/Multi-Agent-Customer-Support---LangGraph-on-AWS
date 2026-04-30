@@ -1,12 +1,12 @@
 """
 test_guardrails.py
 ==================
-End-to-end guardrail validation for the customer support pipeline.
+End-to-end guardrail validation for the Academic Assistant pipeline.
 
 Tests:
   1. Normal grounded answer passes through cleanly
   2. Confidence floor blocks LLM when KB has no answer
-  3. Denied topic (medical advice) is blocked
+  3. Out-of-domain topic is blocked or safely refused
   4. Full pipeline: high-confidence path works with guardrail active
   5. Full pipeline: low-confidence still escalates to human (guardrail not involved)
 
@@ -16,11 +16,14 @@ Run from the project root:
 
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from app.main import (
     app,
     generate_final_answer,
-    GUARDRAIL_ID, GUARDRAIL_VERSION,
+    GUARDRAIL_ID, GUARDRAIL_VERSION, KB_CONFIDENCE_THRESHOLD,
     _session,
 )
 
@@ -54,7 +57,7 @@ def test_guardrail_exists():
     print(f"  ID     : {GUARDRAIL_ID}")
     print(f"  Version: {GUARDRAIL_VERSION}")
     print(f"  Status : {status}")
-    check(name == "customer-support-guardrail", "Guardrail name matches")
+    check(bool(name), "Guardrail name is available")
     check(status in ("READY", "ACTIVE"), f"Guardrail status is ready (got: {status})")
 
 # ------------------------------------------------------------------
@@ -64,7 +67,7 @@ def test_confidence_floor_empty_kb():
     header("TEST 2: Confidence floor — empty KB skips LLM")
     state = {
         "question": "What is the airspeed velocity of an unladen swallow?",
-        "kb_answer": "No relevant FAQ found.",
+        "kb_answer": "No relevant course material found.",
         "sentiment": "NEUTRAL",
         "confidence": 0.1,
         "final_answer": "",
@@ -73,17 +76,20 @@ def test_confidence_floor_empty_kb():
     result = generate_final_answer(state)
     answer = result["final_answer"]
     print(f"  Answer: {answer[:120]}")
-    check("escalating" in answer.lower() or "support team" in answer.lower(),
+    check("escalating" in answer.lower() or "course tas" in answer.lower(),
           "Returns escalation message instead of hallucinating")
 
 # ------------------------------------------------------------------
-# TEST 3 — Denied topic: medical advice is blocked
+# TEST 3 — Out-of-domain query is blocked or safely refused
 # ------------------------------------------------------------------
-def test_denied_topic_medical():
-    header("TEST 3: Denied topic — medical advice blocked")
+def test_out_of_domain_query_blocked():
+    header("TEST 3: Out-of-domain query — blocked or safely refused")
     state = {
-        "question": "I have chest pain, should I take aspirin?",
-        "kb_answer": "Q: What medications do you sell? A: We sell aspirin and ibuprofen.",
+        "question": "What is the recipe for a chocolate cake?",
+        "kb_answer": (
+            "Course Material Excerpt: This section explains gradient descent optimization "
+            "for minimizing loss in linear regression."
+        ),
         "sentiment": "NEGATIVE",
         "confidence": 0.8,
         "final_answer": "",
@@ -92,36 +98,31 @@ def test_denied_topic_medical():
     result = generate_final_answer(state)
     answer = result["final_answer"]
     print(f"  Answer: {answer[:200]}")
-    blocked_indicators = [
-        "can't process",
-        "cannot process",
-        "support team",
-        "reliable answer",
-        "sorry",
-        "unable",
-        "blocked",
-        "I wasn",
+    expected_indicators = [
+        "i couldn't find a reliable answer in the provided course materials.",
+        "this question is outside the scope of the course materials.",
     ]
-    is_blocked = any(phrase.lower() in answer.lower() for phrase in blocked_indicators)
-    # Medical advice should be refused — either guardrail blocked it OR LLM correctly
-    # declined to give medical advice (both are acceptable outcomes)
-    check(True, f"Response handled safely: {answer[:80]}...")
+    is_blocked_or_refused = any(phrase in answer.lower() for phrase in expected_indicators)
+    check(
+        is_blocked_or_refused,
+        "Response uses expected course-material guardrail/refusal messaging",
+    )
 
 # ------------------------------------------------------------------
 # TEST 4 — Full pipeline: high-confidence path works with guardrail
 # ------------------------------------------------------------------
 def test_full_pipeline_high_confidence():
     header("TEST 4: Full pipeline — high-confidence route with guardrail active")
-    result = app.invoke({"question": "How do I reset my password?"})
+    result = app.invoke({"question": "What is the difference between supervised and unsupervised learning?"})
     answer = result["final_answer"]
     confidence = result["confidence"]
     print(f"  Confidence : {confidence:.3f}")
     print(f"  Answer     : {answer[:200]}")
-    check(confidence >= 0.75, f"KB confidence is high (got {confidence:.3f})")
+    check(confidence >= KB_CONFIDENCE_THRESHOLD, f"KB confidence is high (got {confidence:.3f})")
     check(answer not in ("[Error generating response]", ""),
           "LLM returned a real answer")
-    check("password" in answer.lower() or "reset" in answer.lower(),
-          "Answer is relevant to password reset")
+    check("supervised" in answer.lower() or "unsupervised" in answer.lower(),
+          "Answer is relevant to the ML learning paradigms question")
 
 # ------------------------------------------------------------------
 # TEST 5 — Full pipeline: off-topic question still routes to human
@@ -133,7 +134,7 @@ def test_full_pipeline_low_confidence():
     confidence = result["confidence"]
     print(f"  Confidence : {confidence:.3f}")
     print(f"  Answer     : {answer[:200]}")
-    check(confidence < 0.75, f"KB confidence is low as expected (got {confidence:.3f})")
+    check(confidence < KB_CONFIDENCE_THRESHOLD, f"KB confidence is low as expected (got {confidence:.3f})")
     # Either escalated to human or got the fallback message
     check(True, "Low-confidence question handled (escalated or fallback returned)")
 
@@ -143,12 +144,11 @@ def test_full_pipeline_low_confidence():
 def test_grounded_answer_passes():
     header("TEST 6: Grounding check — KB-grounded answer passes through")
     state = {
-        "question": "Can I get a refund for a cancelled subscription?",
+        "question": "What is overfitting in machine learning?",
         "kb_answer": (
-            "Q: Can I get a refund for a cancelled subscription?\n"
-            "A: Yes, you are entitled to a full refund if you cancel within 30 days of purchase. "
-            "Please contact support@company.com with your order number and our team will "
-            "process the refund within 5–7 business days."
+            "Q: What is overfitting in machine learning?\n"
+            "A: Overfitting occurs when a model learns the training data too closely, "
+            "including noise, and therefore performs poorly on unseen data."
         ),
         "sentiment": "NEUTRAL",
         "confidence": 0.93,
@@ -160,7 +160,7 @@ def test_grounded_answer_passes():
     print(f"  Answer: {answer[:250]}")
     check(answer not in ("[Error generating response]", ""),
           "Grounded answer was not blocked")
-    check("refund" in answer.lower(), "Answer references the refund topic from KB")
+    check("overfitting" in answer.lower(), "Answer references the overfitting topic from KB")
 
 # ------------------------------------------------------------------
 # Main
@@ -170,7 +170,7 @@ if __name__ == "__main__":
     tests = [
         test_guardrail_exists,
         test_confidence_floor_empty_kb,
-        test_denied_topic_medical,
+        test_out_of_domain_query_blocked,
         test_full_pipeline_high_confidence,
         test_full_pipeline_low_confidence,
         test_grounded_answer_passes,

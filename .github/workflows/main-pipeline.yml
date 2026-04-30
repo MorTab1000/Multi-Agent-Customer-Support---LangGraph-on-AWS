@@ -1,0 +1,74 @@
+name: AI Multi-Agent CI/CD
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  ci-testing:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Lint with flake8
+        run: |
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Run Integration Tests
+        env:
+          KNOWLEDGE_BASE_ID: ${{ vars.KNOWLEDGE_BASE_ID }}
+          GUARDRAIL_ID: ${{ vars.GUARDRAIL_ID }}
+          GUARDRAIL_VERSION: ${{ vars.GUARDRAIL_VERSION }}
+          FLOW_ARN: ${{ vars.FLOW_DEFINITION_ARN }}
+          FEEDBACK_BUCKET: ${{ vars.FEEDBACK_BUCKET }}
+          DATA_BUCKET: ${{ vars.DATA_BUCKET }}
+          DATA_SOURCE_ID: ${{  vars.DATA_SOURCE_ID  }}
+          REGION: ${{ vars.AWS_REGION }}
+        run: |
+          python tests/test_guardrails.py
+          python tests/test_feedback_loop.py
+
+  cd-deployment:
+    needs: ci-testing
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Deploy to AWS
+        run: |
+          chmod +x scripts/deploy.sh
+          ./scripts/deploy.sh --stack multi-agent-lab-${{ vars.PROJECT_SUFFIX }} --suffix ${{ vars.PROJECT_SUFFIX }} --region ${{ vars.AWS_REGION }} --access-key ${{ secrets.AWS_ACCESS_KEY_ID }} --secret-key ${{ secrets.AWS_SECRET_ACCESS_KEY }}

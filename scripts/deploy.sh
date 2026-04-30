@@ -4,10 +4,10 @@
 #
 # Deploys the full multi-agent app stack in 10 steps:
 #   1. CloudFormation (S3, IAM, ECR, Lambda, EventBridge)
-#   2. Upload FAQ files to S3
+#   2. Upload course material files to S3
 #   3. Create S3 Vector bucket + index
 #   4. Create Bedrock Knowledge Base
-#   5. Create data source + sync FAQs into KB
+#   5. Create data source + sync course materials into KB
 #   6. Patch Lambda env vars + IAM permissions
 #   7. Create SageMaker worker task template
 #   8. Create Bedrock Guardrail
@@ -24,7 +24,7 @@ set -euo pipefail
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
 PROFILE=""
-REGION="eu-west-1"
+REGION="us-east-1"
 SUFFIX="$(python3 -c "import random,string; print(''.join(random.choices(string.ascii_lowercase+string.digits,k=6)))")"
 ACCESS_KEY=""
 SECRET_KEY=""
@@ -65,7 +65,7 @@ fi
 [[ -z "$STACK_NAME" ]] && STACK_NAME="multi-agent-lab-${SUFFIX}"
 DATA_BUCKET="data-bucket-${SUFFIX}"
 FEEDBACK_BUCKET="feedback-bucket-${SUFFIX}"
-GUARDRAIL_NAME="multi-agent-guardrail-${SUFFIX}"
+GUARDRAIL_NAME="multi-agent-ml-guardrail-${SUFFIX}"
 
 echo "==================================================="
 echo " DEPLOY multi-agent lab"
@@ -82,13 +82,49 @@ ACCOUNT_ID=$(aws "${PROFILE_ARG[@]}" sts get-caller-identity \
   --query Account --output text --region "$REGION")
 echo "  Account: $ACCOUNT_ID  |  Region: $REGION"
 
+# Package hardened Lambda handler (used by CloudFormation in step 1)
+LAMBDA_ARTIFACT_BUCKET="multi-agent-artifacts-${ACCOUNT_ID}-${REGION}-${SUFFIX}"
+LAMBDA_ARTIFACT_KEY="lambda/a2i_completion_handler-${SUFFIX}.zip"
+aws "${PROFILE_ARG[@]}" s3api create-bucket \
+  --bucket "$LAMBDA_ARTIFACT_BUCKET" \
+  --create-bucket-configuration "LocationConstraint=$REGION" \
+  --region "$REGION" > /dev/null 2>&1 || true
+if [[ "$REGION" == "us-east-1" ]]; then
+  aws "${PROFILE_ARG[@]}" s3api create-bucket \
+    --bucket "$LAMBDA_ARTIFACT_BUCKET" \
+    --region "$REGION" > /dev/null 2>&1 || true
+fi
+cd "$REPO_DIR/lambda"
+
+# Cross-platform zip creation
+if command -v zip >/dev/null 2>&1; then
+  # Use native zip if available (Linux/Mac)
+  zip -q function.zip a2i_completion_handler.py
+elif command -v python3 >/dev/null 2>&1; then
+  # Fallback to python3 (Linux CI/CD fallback)
+  python3 -m zipfile -c function.zip a2i_completion_handler.py
+else
+  # Fallback to python3 (Windows Git Bash)
+  python3 -m zipfile -c function.zip a2i_completion_handler.py
+fi
+
+cd "$REPO_DIR"
+aws "${PROFILE_ARG[@]}" s3 cp "$REPO_DIR/lambda/function.zip" \
+  "s3://${LAMBDA_ARTIFACT_BUCKET}/${LAMBDA_ARTIFACT_KEY}" \
+  --region "$REGION" > /dev/null
+rm -f "$REPO_DIR/lambda/function.zip"
+echo "  Packaged Lambda uploaded to s3://${LAMBDA_ARTIFACT_BUCKET}/${LAMBDA_ARTIFACT_KEY}"
+
 # ── [1/10] CloudFormation ────────────────────────────────────────────────────
 echo ""
 echo "=== [1/10] Deploying CloudFormation stack ==="
 aws "${PROFILE_ARG[@]}" cloudformation deploy \
   --template-file "$REPO_DIR/infra/cloudformation.yaml" \
   --stack-name "$STACK_NAME" \
-  --parameter-overrides RandomSuffix="$SUFFIX" \
+  --parameter-overrides \
+    RandomSuffix="$SUFFIX" \
+    LambdaCodeS3Bucket="$LAMBDA_ARTIFACT_BUCKET" \
+    LambdaCodeS3Key="$LAMBDA_ARTIFACT_KEY" \
   --capabilities CAPABILITY_NAMED_IAM \
   --region "$REGION"
 
@@ -110,10 +146,10 @@ echo "  SageMaker Role   : $SAGEMAKER_ROLE"
 echo "  Lambda Function  : $LAMBDA_FUNCTION"
 echo "  ECR URI          : $ECR_URI"
 
-# ── [2/10] Upload FAQ files ──────────────────────────────────────────────────
+# ── [2/10] Upload course material files ──────────────────────────────────────
 echo ""
-echo "=== [2/10] Uploading FAQ files ==="
-aws "${PROFILE_ARG[@]}" s3 sync "$REPO_DIR/data/faqs/" "s3://$DATA_BUCKET/" --region "$REGION"
+echo "=== [2/10] Uploading course material files ==="
+aws "${PROFILE_ARG[@]}" s3 sync "$REPO_DIR/data/pdfs/" "s3://$DATA_BUCKET/" --region "$REGION"
 COUNT=$(aws "${PROFILE_ARG[@]}" s3 ls "s3://$DATA_BUCKET/" --region "$REGION" | wc -l | tr -d ' ')
 echo "  $COUNT file(s) in s3://$DATA_BUCKET/"
 
@@ -124,32 +160,56 @@ echo "  output/ prefix created in $FEEDBACK_BUCKET"
 # ── [3/10] S3 Vector bucket + index ──────────────────────────────────────────
 echo ""
 echo "=== [3/10] Creating S3 Vector bucket and index ==="
-VECTOR_BUCKET_ARN="arn:aws:s3vectors:${REGION}:${ACCOUNT_ID}:bucket/edu-s3-vector"
-VECTOR_INDEX_ARN="arn:aws:s3vectors:${REGION}:${ACCOUNT_ID}:bucket/edu-s3-vector/index/edu-s3-vector-index"
+VECTOR_BUCKET_NAME="edu-s3-vector-${SUFFIX}"
+VECTOR_INDEX_NAME="edu-s3-vector-index-${SUFFIX}"
+VECTOR_BUCKET_ARN="arn:aws:s3vectors:${REGION}:${ACCOUNT_ID}:bucket/${VECTOR_BUCKET_NAME}"
+VECTOR_INDEX_ARN="arn:aws:s3vectors:${REGION}:${ACCOUNT_ID}:bucket/${VECTOR_BUCKET_NAME}/index/${VECTOR_INDEX_NAME}"
 
 python3 - <<PYEOF
-import boto3, os, sys
+import boto3, os, sys, time
 session = boto3.Session(profile_name=os.environ.get("BOTO3_PROFILE") or None, region_name="$REGION")
 s3v = session.client("s3vectors")
-try:
-    s3v.create_vector_bucket(vectorBucketName="edu-s3-vector")
-    print("  Vector bucket created.")
-except s3v.exceptions.ConflictException:
-    print("  Vector bucket already exists.")
-except Exception as e:
-    print(f"  ERROR: {e}", file=sys.stderr); sys.exit(1)
 
 try:
-    s3v.create_index(vectorBucketName="edu-s3-vector", indexName="edu-s3-vector-index",
-                     dataType="float32", dimension=1024, distanceMetric="cosine")
-    print("  Vector index created.")
+    s3v.create_vector_bucket(vectorBucketName="${VECTOR_BUCKET_NAME}")
+    print(f"  Vector bucket ${VECTOR_BUCKET_NAME} created.")
 except s3v.exceptions.ConflictException:
-    print("  Vector index already exists.")
+    print(f"  Vector bucket ${VECTOR_BUCKET_NAME} already exists.")
 except Exception as e:
-    print(f"  ERROR: {e}", file=sys.stderr); sys.exit(1)
+    print(f"  ERROR creating bucket: {e}", file=sys.stderr); sys.exit(1)
+
+print("  Waiting for bucket to propagate...")
+time.sleep(10) 
+
+try:
+    s3v.create_index(
+        vectorBucketName="${VECTOR_BUCKET_NAME}", 
+        indexName="${VECTOR_INDEX_NAME}",
+        dataType="float32", 
+        dimension=1024, 
+        distanceMetric="cosine",
+        metadataConfiguration={
+            "nonFilterableMetadataKeys": ["AMAZON_BEDROCK_TEXT_CHUNK"]
+        }
+    )
+    print(f"  Vector index ${VECTOR_INDEX_NAME} created.")
+except s3v.exceptions.ConflictException:
+    print(f"  Vector index ${VECTOR_INDEX_NAME} already exists.")
+except Exception as e:
+    if "NotFoundException" in str(e):
+        print("  Bucket still not ready, retrying in 10s...")
+        time.sleep(10)
+        s3v.create_index(
+            vectorBucketName="${VECTOR_BUCKET_NAME}", 
+            indexName="${VECTOR_INDEX_NAME}",
+            dataType="float32", dimension=1024, distanceMetric="cosine",
+            metadataConfiguration={"nonFilterableMetadataKeys": ["AMAZON_BEDROCK_TEXT_CHUNK"]}
+        )
+        print(f"  Vector index ${VECTOR_INDEX_NAME} created after retry.")
+    else:
+        print(f"  ERROR creating index: {e}", file=sys.stderr); sys.exit(1)
 PYEOF
 
-# Grant KB role access to the specific vector resources
 aws "${PROFILE_ARG[@]}" iam put-role-policy \
   --role-name "bedrock-kb-role-${SUFFIX}" \
   --policy-name S3VectorsBucketAccess \
@@ -178,12 +238,12 @@ bedrock = session.client("bedrock-agent")
 
 kbs = bedrock.list_knowledge_bases().get("knowledgeBaseSummaries", [])
 for kb in kbs:
-    if kb["name"] == "faqs-kb-$SUFFIX":
+    if kb["name"] == "ml-lectures-kb-$SUFFIX":
         print(kb["knowledgeBaseId"]); sys.exit(0)
 
 try:
     kb = bedrock.create_knowledge_base(
-        name="faqs-kb-$SUFFIX",
+        name="ml-lectures-kb-$SUFFIX",
         roleArn="$BEDROCK_KB_ROLE",
         knowledgeBaseConfiguration={
             "type": "VECTOR",
@@ -219,7 +279,7 @@ echo "  Knowledge Base ID: $KB_ID"
 
 # ── [5/10] Data source + sync ────────────────────────────────────────────────
 echo ""
-echo "=== [5/10] Creating data source and syncing FAQs ==="
+echo "=== [5/10] Creating data source and syncing course materials ==="
 DS_ID=$(python3 - <<PYEOF
 import boto3, os, time, sys
 session = boto3.Session(profile_name=os.environ.get("BOTO3_PROFILE") or None, region_name="$REGION")
@@ -233,7 +293,7 @@ if dss:
 else:
     ds = bedrock.create_data_source(
         knowledgeBaseId=KB_ID,
-        name="faqs-ds-$SUFFIX",
+        name="ml-lectures-ds-$SUFFIX",
         dataSourceConfiguration={
             "type": "S3",
             "s3Configuration": {"bucketArn": f"arn:aws:s3:::{DATA_BUCKET}"}
@@ -241,8 +301,11 @@ else:
         vectorIngestionConfiguration={
             "chunkingConfiguration": {
                 "chunkingStrategy": "FIXED_SIZE",
-                "fixedSizeChunkingConfiguration": {"maxTokens": 300, "overlapPercentage": 20}
-            }
+                "fixedSizeChunkingConfiguration": {
+                    "maxTokens": 300,
+                    "overlapPercentage": 25
+                }
+           }
         }
     )
     ds_id = ds["dataSource"]["dataSourceId"]
@@ -301,12 +364,12 @@ TEMPLATE_ARN=$(python3 - <<PYEOF
 import boto3, os, sys
 session = boto3.Session(profile_name=os.environ.get("BOTO3_PROFILE") or None, region_name="$REGION")
 sm = session.client("sagemaker")
-ui_name = "faq-review-ui-$SUFFIX"
+ui_name = "ml-lectures-ds-review-ui-$SUFFIX"
 try:
     r = sm.describe_human_task_ui(HumanTaskUiName=ui_name)
     print(r["HumanTaskUiArn"])
 except sm.exceptions.ResourceNotFound:
-    template = open("$REPO_DIR/infra/a2i_worker_template.xml").read()
+    template = open("infra/a2i_worker_template.xml", "r", encoding="utf-8").read()
     r = sm.create_human_task_ui(HumanTaskUiName=ui_name, UiTemplate={"Content": template})
     print(r["HumanTaskUiArn"])
 except Exception as e:
@@ -319,62 +382,66 @@ echo "  Worker template ARN: $TEMPLATE_ARN"
 echo ""
 echo "=== [8/10] Creating Bedrock Guardrail ==="
 GUARDRAIL_INFO=$(python3 - <<PYEOF
-import boto3, os, json, sys
-session = boto3.Session(profile_name=os.environ.get("BOTO3_PROFILE") or None, region_name="$REGION")
-bedrock = session.client("bedrock")
+import boto3, os, json, sys, time
 
-# Check if guardrail already exists
-gs = bedrock.list_guardrails().get("guardrails", [])
-existing = next((g for g in gs if g["name"] == "$GUARDRAIL_NAME"), None)
-if existing:
-    print(f"  Guardrail already exists: {existing['id']}", file=sys.stderr)
-    versions = bedrock.list_guardrail_versions(guardrailIdentifier=existing["id"]).get("guardrails", [])
-    published = [v for v in versions if v.get("version", "") != "DRAFT"]
-    ver = published[-1]["version"] if published else "DRAFT"
-    print(json.dumps({"id": existing["id"], "version": ver}))
-    sys.exit(0)
+try:
+    
+    region = os.environ.get("REGION", "us-east-1")
+    suffix = os.environ.get("SUFFIX", "")
+    
+    session = boto3.Session(profile_name=os.environ.get("BOTO3_PROFILE") or None, region_name=region)
+    bedrock = session.client("bedrock")
 
-# Create guardrail with content filters, denied topics, and contextual grounding
-g = bedrock.create_guardrail(
-    name="$GUARDRAIL_NAME",
-    description="Content safety + anti-hallucination + topic filtering for Leumi Trade support",
-    topicPolicyConfig={
-        "topicsConfig": [
-            {
-                "name": "Competitors",
-                "definition": "Asking how to use eToro, Plus500, Robinhood, or Interactive Brokers apps.",
-                "examples": ["How do I open an eToro account?"],
-                "type": "DENY"
-            }
-        ]
-    },
-    contentPolicyConfig={
-        "filtersConfig": [
-            {"type": "HATE",        "inputStrength": "HIGH", "outputStrength": "HIGH"},
-            {"type": "INSULTS",     "inputStrength": "HIGH", "outputStrength": "HIGH"},
-            {"type": "SEXUAL",      "inputStrength": "HIGH", "outputStrength": "HIGH"},
-            {"type": "VIOLENCE",    "inputStrength": "HIGH", "outputStrength": "HIGH"},
-            {"type": "MISCONDUCT",  "inputStrength": "HIGH", "outputStrength": "HIGH"},
-            {"type": "PROMPT_ATTACK", "inputStrength": "NONE", "outputStrength": "NONE"},
-        ]
-    },
-    contextualGroundingPolicyConfig={
-        "filtersConfig": [
-            {"type": "GROUNDING",  "threshold": 0.3},
-            {"type": "RELEVANCE",  "threshold": 0.3},
-        ]
-    },
-    blockedInputMessaging="This question is outside Leumi Trade support scope.",
-    blockedOutputsMessaging="Unable to generate a reliable answer. Contact Leumi Trade support.",
-)
-guardrail_id = g["guardrailId"]
-print(f"  Guardrail created: {guardrail_id}", file=sys.stderr)
+    guardrail_name = f"multi-agent-guardrail-{suffix}"
 
-# Publish a version
-v = bedrock.create_guardrail_version(guardrailIdentifier=guardrail_id, description="v1")
-version = v["version"]
-print(f"  Version published: {version}", file=sys.stderr)
-print(json.dumps({"id": guardrail_id, "version": version}))
+    print(f"Checking for existing guardrail: {guardrail_name}...", file=sys.stderr)
+    existing_guardrails = bedrock.list_guardrails().get('guardrails', [])
+    existing_gr = next((g for g in existing_guardrails if g['name'] == guardrail_name), None)
+
+    if existing_gr:
+        guardrail_id = existing_gr['id']
+        version = existing_gr.get('version', '1')
+        print(f"   Guardrail already exists. Reusing ID: {guardrail_id}", file=sys.stderr)
+        
+        print(json.dumps({"id": guardrail_id, "version": version}))
+        
+    else:
+        print("Creating new guardrail...", file=sys.stderr)
+        g = bedrock.create_guardrail(
+            name=guardrail_name,
+            description="Academic Assistant Guardrail",
+            contentPolicyConfig={
+                "filtersConfig": [
+                    {"type": "HATE", "inputStrength": "HIGH", "outputStrength": "HIGH"},
+                    {"type": "INSULTS", "inputStrength": "HIGH", "outputStrength": "HIGH"},
+                    {"type": "SEXUAL", "inputStrength": "HIGH", "outputStrength": "HIGH"},
+                    {"type": "VIOLENCE", "inputStrength": "HIGH", "outputStrength": "HIGH"},
+                    {"type": "MISCONDUCT", "inputStrength": "HIGH", "outputStrength": "HIGH"},
+                    {"type": "PROMPT_ATTACK", "inputStrength": "NONE", "outputStrength": "NONE"},
+                ]
+            },
+            contextualGroundingPolicyConfig={
+                "filtersConfig": [
+                    {"type": "GROUNDING", "threshold": 0.3},
+                    {"type": "RELEVANCE", "threshold": 0.3},
+                ]
+            },
+            blockedInputMessaging="Question outside course scope.",
+            blockedOutputsMessaging="No reliable answer found.",
+        )
+        guardrail_id = g['guardrailId']
+        print(f"   Created brand new guardrail: {guardrail_id}", file=sys.stderr)
+        
+        v = bedrock.create_guardrail_version(guardrailIdentifier=guardrail_id, description="v1")
+        version = v["version"]
+        
+        print(f"   Success: Unique Guardrail created: {guardrail_id} (v{version})", file=sys.stderr)
+        
+        print(json.dumps({"id": guardrail_id, "version": version}))
+
+except Exception as e:
+    print(f"   Fatal Error creating guardrail: {e}", file=sys.stderr)
+    sys.exit(1)
 PYEOF
 )
 GUARDRAIL_ID=$(echo "$GUARDRAIL_INFO" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
@@ -485,13 +552,13 @@ echo "    2. SageMaker > Augmented AI > Human review workflows > Create"
 echo "         Name      : escalation-review-workflow-${SUFFIX}"
 echo "         S3 output : s3://${FEEDBACK_BUCKET}/output/"
 echo "         IAM role  : ${SAGEMAKER_ROLE}"
-echo "         Template  : faq-review-ui-${SUFFIX}"
+echo "         Template  : ml-lectures-ds-review-ui-${SUFFIX}"
 echo "         Workforce : HumanReviewTeam"
 echo ""
 echo " Test:"
 echo "   curl -s -X POST https://$SERVICE_URL/ask \\"
 echo "     -H 'Content-Type: application/json' \\"
-echo "     -d '{\"question\":\"Does Leumi Trade support IPO investments?\"}' | jq"
+echo "     -d '{\"question\":\"What is overfitting in machine learning?\"}' | jq"
 echo ""
 echo " Destroy:"
 echo "   bash scripts/destroy.sh --stack $STACK_NAME --suffix $SUFFIX --region $REGION --profile ${PROFILE:-default}"

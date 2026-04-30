@@ -6,7 +6,7 @@ End-to-end test for the human-review → knowledge-base feedback loop.
 Steps:
   1. Upload a mock A2I output.json to the feedback bucket (simulates a completed human review)
   2. Read and parse the human answer from S3
-  3. Write the Q&A as a new FAQ to the data bucket
+  3. Write the Q&A as a new TA note to the data bucket
   4. Start a Bedrock KB ingestion job and poll until complete
   5. Query the KB to verify the new answer is retrievable
 
@@ -15,24 +15,27 @@ Run from the project root:
 """
 
 import sys, os
+from dotenv import load_dotenv
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import json, time, boto3
 
 # ---------- config (mirrors main.py) ----------
-REGION        = "eu-west-1"
-AWS_PROFILE   = "aws-sandbox-personal-36"
-FEEDBACK_BUCKET = "feedback-bucket-kni9r8"
-DATA_BUCKET     = "data-bucket-kni9r8"
-KB_ID           = "Q0XGDUOZRR"
-DS_ID           = "5SONGOZDXF"
+load_dotenv()
+
+REGION        = os.getenv("REGION")
+AWS_PROFILE   = os.getenv("AWS_PROFILE")
+FEEDBACK_BUCKET = os.getenv("FEEDBACK_BUCKET")
+DATA_BUCKET     = os.getenv("DATA_BUCKET")
+KB_ID           = os.getenv("KNOWLEDGE_BASE_ID")
+DS_ID           = os.getenv("DATA_SOURCE_ID")
 
 # Mock Q&A to inject
-MOCK_QUESTION = "Can I get a refund for a cancelled subscription?"
+MOCK_QUESTION = "What is the difference between supervised and unsupervised learning?"
 MOCK_ANSWER   = (
-    "Yes, you are entitled to a full refund if you cancel within 30 days of purchase. "
-    "Please contact support@company.com with your order number and our team will "
-    "process the refund within 5–7 business days."
+    "Supervised learning uses labeled training examples where inputs are paired with "
+    "target outputs, while unsupervised learning finds structure in unlabeled data. "
+    "A common supervised task is classification, and a common unsupervised task is clustering."
 )
 
 _session = boto3.Session(profile_name=AWS_PROFILE, region_name=REGION)
@@ -55,10 +58,10 @@ def _read_human_answer(output_s3_uri):
 
 
 def _ingest_to_kb(question, answer, loop_name):
-    faq_key = f"faq_human_{loop_name}.txt"
+    note_key = f"ta_note_{loop_name}.txt"
     content = f"Q: {question}\nA: {answer}"
-    s3.put_object(Bucket=DATA_BUCKET, Key=faq_key, Body=content.encode())
-    print(f"  [OK] New FAQ written → s3://{DATA_BUCKET}/{faq_key}")
+    s3.put_object(Bucket=DATA_BUCKET, Key=note_key, Body=content.encode())
+    print(f"  [OK] New TA note written → s3://{DATA_BUCKET}/{note_key}")
 
     resp = bedrock_agent.start_ingestion_job(
         knowledgeBaseId=KB_ID,
@@ -130,7 +133,7 @@ def step1_upload_mock_output():
         ],
         "inputContent": {
             "question": MOCK_QUESTION,
-            "faq_suggestion": "No relevant FAQ found."
+            "material_suggestion": "No relevant course material found."
         }
     }
     s3_key = f"output/escalation-review-workflow/mock/{loop_name}/output.json"
@@ -155,10 +158,10 @@ def step2_read_answer(s3_uri):
     return answer
 
 
-# ---------- STEP 3 + 4: write FAQ to data bucket, trigger KB sync ----------
+# ---------- STEP 3 + 4: write TA note to data bucket, trigger KB sync ----------
 
 def step3_ingest(question, answer, loop_name):
-    print("\n=== STEP 3: Write FAQ to data bucket ===")
+    print("\n=== STEP 3: Write TA note to data bucket ===")
     job_id = _ingest_to_kb(question, answer, loop_name)
     print("\n=== STEP 4: Poll KB ingestion until complete ===")
     ok = _poll_ingestion(job_id)
@@ -170,14 +173,14 @@ def step3_ingest(question, answer, loop_name):
 # ---------- STEP 5: verify KB is searchable ----------
 
 def step5_verify_kb(question):
-    print("\n=== STEP 5: Query KB to verify new FAQ is retrievable ===")
+    print("\n=== STEP 5: Query KB to verify new TA note is retrievable ===")
     # Give the index a moment to settle
     time.sleep(5)
     text, score = _query_kb(question)
     print(f"  Top result (score={score:.3f}):\n    {text[:200]}")
     assert score > 0.0, "KB returned no results — ingestion may have failed silently."
     # Check that the answer text appears in the top result
-    key_phrase = "refund"
+    key_phrase = "supervised"
     assert key_phrase.lower() in text.lower(), (
         f"Expected '{key_phrase}' in top KB result but got:\n  {text}"
     )

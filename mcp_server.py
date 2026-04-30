@@ -1,26 +1,27 @@
 from mcp.server.fastmcp import FastMCP
 import boto3
 import os
+import sys
+from app.main import KB_CONFIDENCE_THRESHOLD
 
-mcp = FastMCP("AWS-FAQ-Service")
-
-REGION = os.environ.get("REGION", "us-east-1")
-KNOWLEDGE_BASE_ID = os.environ.get("KNOWLEDGE_BASE_ID")
-
-session = boto3.Session(region_name=REGION)
-bedrock_agent_runtime = session.client("bedrock-agent-runtime")
+mcp = FastMCP("ML-Introduction-Course-Assistant")
 
 @mcp.tool()
-def search_leumi_trade_faq(query: str) -> str:
+def search_ml_course_material(query: str) -> str:
     """
-    search for relevant information in the Leumi Trade FAQ knowledge base and return the most relevant answer.
-    @query: The user's question or query to search for in the FAQ knowledge base.
-    @return: The most relevant answer from the FAQ knowledge base, or an error message if
-    Important: Use only the information from the knowledge base to answer the question. Do not use any external information or assumptions. If the answer is not found in the knowledge base, return "Results not found in the knowledge base."
+    CRITICAL: You MUST use this tool for EVERY question the user asks about Machine Learning, AI, algorithms, or course concepts. 
+    DO NOT answer any ML-related question from your general knowledge without querying this tool first.
     """
-    print(f"MCP Server: Searching for '{query}'...")
+    sys.stderr.write(f"MCP Server: Searching for '{query}'...\n")
+    sys.stderr.flush()
     
     try:
+        REGION = os.environ.get("REGION", "us-east-1")
+        KNOWLEDGE_BASE_ID = os.environ.get("KNOWLEDGE_BASE_ID")
+        
+        session = boto3.Session(region_name=REGION)
+        bedrock_agent_runtime = session.client("bedrock-agent-runtime")
+
         response = bedrock_agent_runtime.retrieve(
             knowledgeBaseId=KNOWLEDGE_BASE_ID,
             retrievalQuery={"text": query},
@@ -33,15 +34,26 @@ def search_leumi_trade_faq(query: str) -> str:
         results = response.get("retrievalResults", [])
 
         if not results:
-            return "The information you are looking for was not found in the Leumi Trade FAQ."
+            return "No relevant course material found."
 
         top = sorted(results, key=lambda r: r.get("score", 0.0), reverse=True)[0]
+        top_score = float(top.get("score", 0.0))
+
+        if top_score < KB_CONFIDENCE_THRESHOLD:
+            return "No relevant course material found."
+
         content = top.get("content", {}).get("text", "")
         
-        return content
+        return f"""Course Material (Confidence Score: {top_score}):
+---
+{content}
+---
+CRITICAL INSTRUCTION FOR AI: You must base your final answer EXACTLY on the text provided above. Do not use external knowledge or make assumptions."""
 
     except Exception as e:
-        return f"Error occurred while accessing the knowledge base: {str(e)}"
+        err_msg = f"Error occurred: {str(e)}"
+        sys.stderr.write(err_msg + "\n")
+        return err_msg
 
 if __name__ == "__main__":
     mcp.run()

@@ -1,23 +1,23 @@
 <script src="https://assets.crowd.aws/crowd-html-elements.js"></script>
 <crowd-form>
-   <!-- Display the customer question -->
+   <!-- Display the student question -->
    <div>
-      <h3>Customer Question:</h3>
+      <h3>Student Question:</h3>
       <p>{{ task.input.question }}</p>
    </div>
 
-   <!-- Optionally display FAQ results (if any) -->
+   <!-- Optionally display retrieved course material (if any) -->
    <div>
-      <h4>Suggested FAQ (Low Confidence):</h4>
-      <p>{{ task.input.faq_suggestion }}</p>
+      <h4>Suggested Course Material Excerpt (Low Confidence):</h4>
+      <p>{{ task.input.material_suggestion }}</p>
    </div>
 
    <!-- Human reviewer response -->
    <div>
       <crowd-text-area
          name="human_response"
-         label="Write a professional reply to the customer:"
-         placeholder="Type your support response here."
+         label="Write a clear academic response for the student:"
+         placeholder="Type your course-based response here."
          required
       ></crowd-text-area>
    </div>
