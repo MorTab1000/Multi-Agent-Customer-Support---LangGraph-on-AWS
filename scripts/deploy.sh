@@ -149,13 +149,13 @@ echo "  ECR URI          : $ECR_URI"
 # ── [2/10] Upload course material files ──────────────────────────────────────
 echo ""
 echo "=== [2/10] Uploading course material files ==="
-aws "${PROFILE_ARG[@]}" s3 sync "$REPO_DIR/data/pdfs/" "s3://$DATA_BUCKET/" --region "$REGION"
-COUNT=$(aws "${PROFILE_ARG[@]}" s3 ls "s3://$DATA_BUCKET/" --region "$REGION" | wc -l | tr -d ' ')
-echo "  $COUNT file(s) in s3://$DATA_BUCKET/"
-
-aws "${PROFILE_ARG[@]}" s3api put-object \
-  --bucket "$FEEDBACK_BUCKET" --key "output/" --region "$REGION" > /dev/null
-echo "  output/ prefix created in $FEEDBACK_BUCKET"
+if [ -d "data/pdfs/" ]; then
+    echo "  Uploading files from data/pdfs/ to S3..."
+    aws s3 cp data/pdfs/ "s3://$DATA_BUCKET/main_data/" --recursive --region "$REGION"
+else
+    echo "  [WARNING] Directory data/pdfs/ not found. Skipping upload."
+    echo "  Make sure you have uploaded the course materials manually to: s3://$DATA_BUCKET/main_data/"
+fi
 
 # ── [3/10] S3 Vector bucket + index ──────────────────────────────────────────
 echo ""
