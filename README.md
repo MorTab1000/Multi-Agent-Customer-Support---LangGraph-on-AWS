@@ -15,8 +15,8 @@ POST /ask → Domain Classifier (api.py) → LangGraph Graph
                                               ├── KB Agent (Bedrock Knowledge Base)
                                               ├── Sentiment Agent (Amazon Comprehend)
                                               └── Join → Confidence Router
-                                                              ├── ≥ 0.75 → LLM Generator (Nova Pro + Guardrail v4)
-                                                              └── < 0.75  → Human Escalation (SageMaker A2I)
+                                                              ├── ≥ 0.7 → LLM Generator (Nova Pro + Guardrail v4)
+                                                              └── < 0.7  → Human Escalation (SageMaker A2I)
 ```
 
 ### Key Cloud & Infrastructure Integrations:

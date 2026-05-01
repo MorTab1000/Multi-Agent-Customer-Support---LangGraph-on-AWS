@@ -252,7 +252,7 @@
   <rect id="n-router" class="nd" x="745" y="212" width="140" height="66" rx="8"/>
   <text class="nd-label" x="815" y="237">Confidence</text>
   <text class="nd-label" x="815" y="253">Router</text>
-  <text class="nd-badge"  x="815" y="295">threshold = 0.75</text>
+  <text class="nd-badge"  x="815" y="295">threshold = 0.7</text>
 
   <!-- LLM Generator  cx=970 -->
   <rect id="n-llm"  class="nd" x="905" y="212" width="140" height="66" rx="8"/>
@@ -330,13 +330,13 @@
   <!-- Join → Router -->
   <line id="a-jr" class="ar" x1="720" y1="247" x2="743" y2="247" marker-end="url(#arr-dim)"/>
 
-  <!-- Router → LLM (≥0.75) -->
+  <!-- Router → LLM (≥0.7) -->
   <line id="a-rl" class="ar" x1="885" y1="247" x2="903" y2="247" marker-end="url(#arr-dim)"/>
-  <text id="al-rl" class="ar-label" x="894" y="239">≥ 0.75</text>
+  <text id="al-rl" class="ar-label" x="894" y="239">≥ 0.7</text>
 
-  <!-- Router → A2I (<0.75, diagonal up-right) -->
+  <!-- Router → A2I (<0.7, diagonal up-right) -->
   <line id="a-ra" class="ar" x1="830" y1="212" x2="920" y2="136" marker-end="url(#arr-dim)"/>
-  <text id="al-ra" class="ar-label" x="895" y="170">&lt; 0.75</text>
+  <text id="al-ra" class="ar-label" x="895" y="170">&lt; 0.7</text>
 
   <!-- LLM → Guardrail -->
   <line id="a-lg" class="ar" x1="1045" y1="247" x2="1063" y2="247" marker-end="url(#arr-dim)"/>
@@ -460,32 +460,32 @@ const STEPS = [
     hi:["n-sent"], arrows:[["a-ds",null,"comprehend"],["a-sj","al-sj","comprehend"]]
   },
   {
-    tag:"STEP 6", title:"Confidence Router: 0.75 threshold decision",
-    desc:"The <strong>Join node</strong> waits for both agents, then merges their results into shared state. The <strong>Confidence Router</strong> checks the KB score:<br><br>• <strong>score ≥ 0.75</strong> → LLM Generator (answer automatically)<br>• <strong>score &lt; 0.75</strong> → SageMaker A2I (escalate to human)",
-    code:"def route(state):\n    if state['confidence'] >= 0.75:\n        return 'llm_generator'\n    return 'human_escalation'",
+    tag:"STEP 6", title:"Confidence Router: 0.7 threshold decision",
+    desc:"The <strong>Join node</strong> waits for both agents, then merges their results into shared state. The <strong>Confidence Router</strong> checks the KB score:<br><br>• <strong>score ≥ 0.7</strong> → LLM Generator (answer automatically)<br>• <strong>score &lt; 0.7</strong> → SageMaker A2I (escalate to human)",
+    code:"def route(state):\n    if state['confidence'] >= 0.7:\n        return 'llm_generator'\n    return 'human_escalation'",
     hi:["n-join","n-router"], arrows:[["a-kj","al-kj","langgraph"],["a-sj","al-sj","comprehend"],["a-jr",null,"router"]]
   },
   {
     tag:"STEP 7a", title:"High confidence → LLM Generator + Bedrock Guardrail",
-    desc:"Score ≥ 0.75: Nova Pro generates a polished response using the KB answer, original question, and sentiment. The response then passes through <strong>Bedrock Guardrail v4</strong>: content filters (all HIGH) + contextual grounding (0.7 threshold blocks hallucinations not grounded in the KB).",
+    desc:"Score ≥ 0.7: Nova Pro generates a polished response using the KB answer, original question, and sentiment. The response then passes through <strong>Bedrock Guardrail v4</strong>: content filters (all HIGH) + contextual grounding (0.7 threshold blocks hallucinations not grounded in the KB).",
     code:"response = bedrock_runtime.invoke_model(\n  modelId='eu.amazon.nova-pro-v1:0',\n  guardrailIdentifier=GUARDRAIL_ID,\n  guardrailVersion='4',\n  body=json.dumps({'prompt': prompt})\n)",
     hi:["n-llm","n-grd"], arrows:[["a-rl","al-rl","langgraph"],["a-lg","al-lg","guardrail"],["a-gu","al-gu","bedrock"]]
   },
   {
     tag:"STEP 7b", title:"Low confidence → SageMaker A2I (human escalation)",
-    desc:"Score &lt; 0.75: the question can't be answered reliably from the KB. <code>sagemaker_a2i_runtime.start_human_loop()</code> creates a task in the human review portal. The user gets an immediate 'escalated' response. Example: <em>\"How do I transfer a Leumi Trade account to an heir?\"</em> — score 0.71.",
+    desc:"Score &lt; 0.7: the question can't be answered reliably from the KB. <code>sagemaker_a2i_runtime.start_human_loop()</code> creates a task in the human review portal. The user gets an immediate 'escalated' response. Example: <em>\"How do I transfer a Leumi Trade account to an heir?\"</em> — score 0.71.",
     code:'result = sagemaker_a2i.start_human_loop(\n  HumanLoopName=f"loop-{uuid4()}",\n  FlowDefinitionArn=FLOW_ARN,\n  HumanLoopInput={"InputContent": json.dumps({"question": question})}\n)\n# Returns: {"answer":"Escalated to human review","confidence":0.71,"escalated":true}',
     hi:["n-a2i","n-human"], arrows:[["a-ra","al-ra","a2i"],["a-ah","al-ah","a2i"]]
   },
   {
     tag:"STEP 8", title:"Feedback loop: EventBridge → Lambda → KB re-ingestion",
-    desc:"After human reviewer answers:<br>1. Answer saved to <strong>Feedback bucket (S3)</strong><br>2. <strong>EventBridge rule</strong> fires on 'A2I HumanLoop Completed' event<br>3. <strong>Lambda</strong> reads the answer, writes a new FAQ to Data bucket<br>4. Lambda calls <code>start_ingestion_job()</code> — new FAQ indexed into the KB<br><br>Next time the same question is asked → KB returns score ≥ 0.75 → answered automatically!",
+    desc:"After human reviewer answers:<br>1. Answer saved to <strong>Feedback bucket (S3)</strong><br>2. <strong>EventBridge rule</strong> fires on 'A2I HumanLoop Completed' event<br>3. <strong>Lambda</strong> reads the answer, writes a new FAQ to Data bucket<br>4. Lambda calls <code>start_ingestion_job()</code> — new FAQ indexed into the KB<br><br>Next time the same question is asked → KB returns score ≥ 0.7 → answered automatically!",
     code:"# Lambda handler\nfaq_key = f'faq_human_{loop_name}.txt'\ns3.put_object(Bucket=DATA_BUCKET, Key=faq_key, Body=f'Q: {question}\\nA: {answer}')\nbedrock_agent.start_ingestion_job(knowledgeBaseId=KB_ID, dataSourceId=DS_ID)",
     hi:["n-fb","n-eb","n-lam","n-data"], arrows:[["a-hf","al-hf","bedrock"],["a-fe","al-fe","eventbridge"],["a-el","al-el","lambda"],["a-ld","al-ld","lambda"],["a-dkb","al-dkb","langgraph"]]
   },
   {
     tag:"COMPLETE ✅", title:"Knowledge Base updated — next query answered automatically",
-    desc:"The new FAQ is now indexed in the KB. The next time anyone asks the same (or similar) question, the KB Agent returns score ≥ 0.75 → LLM Generator answers it — <strong>no human needed</strong>.<br><br>The system gets smarter with every escalation. This is the feedback loop.",
+    desc:"The new FAQ is now indexed in the KB. The next time anyone asks the same (or similar) question, the KB Agent returns score ≥ 0.7 → LLM Generator answers it — <strong>no human needed</strong>.<br><br>The system gets smarter with every escalation. This is the feedback loop.",
     code:null,
     hi:["n-user","n-app","n-dom","n-kb","n-sent","n-join","n-router","n-llm","n-grd"],
     arrows:[["a-ua","al-ua","apprunner"],["a-ad","al-ad","bedrock"],["a-dk",null,"langgraph"],["a-ds",null,"comprehend"],["a-kj","al-kj","langgraph"],["a-sj","al-sj","comprehend"],["a-jr",null,"router"],["a-rl","al-rl","langgraph"],["a-lg","al-lg","guardrail"],["a-gu","al-gu","bedrock"]]
