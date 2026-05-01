@@ -10,7 +10,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DEFAULT_SUPPORT_API_URL = "https://46r8ga4hcc.us-east-1.awsapprunner.com/ask"
+DEFAULT_SUPPORT_API_URL = os.getenv(
+    "SUPPORT_API_URL", "https://46r8ga4hcc.us-east-1.awsapprunner.com/ask"
+)
 REQUEST_TIMEOUT_SECONDS = 30
 
 
