@@ -167,11 +167,11 @@ echo "  ECR URI          : $ECR_URI"
 # ── [2/10] Upload course material files ──────────────────────────────────────
 echo ""
 echo "=== [2/10] Uploading course material files ==="
-if [ -d "$REPO_DIR/data/pdfs/" ]; then
-    echo "  Syncing files from $REPO_DIR/data/pdfs/ to S3..."
-    aws "${PROFILE_ARG[@]}" s3 sync "$REPO_DIR/data/pdfs/" "s3://$DATA_BUCKET/main_data/" --delete --region "$REGION"
+if [ -d "$REPO_DIR/data/materials/" ]; then
+    echo "  Syncing files from $REPO_DIR/data/materials/ to S3..."
+    aws "${PROFILE_ARG[@]}" s3 sync "$REPO_DIR/data/materials/" "s3://$DATA_BUCKET/main_data/" --delete --region "$REGION"
 else
-    echo "  [WARNING] Directory $REPO_DIR/data/pdfs/ not found. Skipping upload."
+    echo "  [WARNING] Directory $REPO_DIR/data/materials/ not found. Skipping upload."
     echo "  Make sure you have uploaded the course materials manually to: s3://$DATA_BUCKET/main_data/"
 fi
 
@@ -545,6 +545,7 @@ else
     --query "ServiceSummaryList[?ServiceName=='$SERVICE_NAME'].ServiceUrl" \
     --output text)
 fi
+
 
 echo ""
 echo "==================================================="
