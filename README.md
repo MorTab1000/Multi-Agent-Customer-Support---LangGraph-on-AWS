@@ -64,7 +64,6 @@ POST /ask → Domain Classifier (api.py) → LangGraph Graph
 - Docker (for App Runner deployment)
 - Python 3.12+
 
-
 ### 1. Install dependencies
 
 ```bash
@@ -74,6 +73,7 @@ pip install -r requirements.txt
 ```
 
 ### 2. Deploy
+
 The deployment process is automated via bash scripts that handle CloudFormation execution, Docker image building, ECR pushing, and App Runner deployment.
 
 ```bash
@@ -82,7 +82,6 @@ bash scripts/deploy.sh
 ```
 
 The script will print the live App Runner URL when complete.
-
 
 ### 3. Test the API
 
@@ -100,17 +99,19 @@ bash scripts/destroy.sh
 
 ## AWS Resources Used
 
-| Service | Purpose |
-|---------|---------|
-| Amazon Bedrock (Nova Pro) | LLM response generation |
+
+| Service                        | Purpose                                                   |
+| ------------------------------ | --------------------------------------------------------- |
+| Amazon Bedrock (Nova Pro)      | LLM response generation                                   |
 | Amazon Bedrock Knowledge Bases | Course material retrieval (Titan Embeddings + S3 Vectors) |
-| Amazon Bedrock Guardrails | Content filtering + contextual grounding |
-| Amazon Comprehend | Sentiment analysis |
-| SageMaker A2I | Human escalation review |
-| AWS App Runner | Serverless container hosting |
-| Amazon ECR | Docker image registry |
-| AWS Lambda + EventBridge | A2I feedback loop automation |
-| Amazon S3 | Course material data + feedback storage |
+| Amazon Bedrock Guardrails      | Content filtering + contextual grounding                  |
+| Amazon Comprehend              | Sentiment analysis                                        |
+| SageMaker A2I                  | Human escalation review                                   |
+| AWS App Runner                 | Serverless container hosting                              |
+| Amazon ECR                     | Docker image registry                                     |
+| AWS Lambda + EventBridge       | A2I feedback loop automation                              |
+| Amazon S3                      | Course material data + feedback storage                   |
+
 
 ## MCP Integration
 
@@ -129,6 +130,7 @@ To connect the UI to your backend API, you need to set the `SUPPORT_API_URL` env
 
 **For Local Development:**
 Create a `.env` file from `.env.example` and set your deployed App Runner URL:
+
 ```bash
 SUPPORT_API_URL=[https://46r8ga4hcc.us-east-1.awsapprunner.com/ask](https://46r8ga4hcc.us-east-1.awsapprunner.com/ask)
 ```
@@ -143,6 +145,7 @@ streamlit run ui/streamlit_app.py
 ```
 
 Features included:
+
 - Chat-style interface with message history via `st.session_state`
 - Custom assistant icons: Robot (`🤖`) for AI and Teacher (`🧑‍🏫`) for escalated responses
 - Escalation indicator box when API returns `escalated: true`
@@ -150,13 +153,13 @@ Features included:
 - Robust network/HTTP/JSON error handling
 - LaTeX formula rendering in responses through Streamlit Markdown (`$...$`, `$$...$$`)
 
-
-
 ### Project Evolution & My Contributions
+
 > This project originated from a foundational LangGraph & AWS workshop. However, it has been significantly expanded, refactored, and transformed into a full-stack, production-ready application. 
-> 
+>
 > **Key enhancements and custom implementations include:**
-> * **Domain Shift & Real-World Use Case:** Adapted the base logic to function as an Academic Assistant, processing real-world university lecture slides and materials.
-> * **Full-Stack UI:** Developed and integrated a persistent, user-friendly Streamlit frontend.
-> * **MCP Server Integration:** Engineered a Model Context Protocol (MCP) server, allowing external AI agents (like Claude Desktop or Cursor) to query the AWS Knowledge Base directly.
-> * **Cloud Infrastructure & CI/CD:** Architected the complete serverless deployment (App Runner, EventBridge, Lambda, SageMaker A2I) and wrote the automated bash deployment/teardown scripts.
+>
+> - **Domain Shift & Real-World Use Case:** Adapted the base logic to function as an Academic Assistant, processing real-world university lecture slides and materials.
+> - **Full-Stack UI:** Developed and integrated a persistent, user-friendly Streamlit frontend.
+> - **MCP Server Integration:** Engineered a Model Context Protocol (MCP) server, allowing external AI agents (like Claude Desktop or Cursor) to query the AWS Knowledge Base directly.
+> - **Cloud Infrastructure & CI/CD:** Architected the complete serverless deployment (App Runner, EventBridge, Lambda, SageMaker A2I) and wrote the automated bash deployment/teardown scripts.
