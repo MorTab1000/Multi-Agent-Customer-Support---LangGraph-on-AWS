@@ -546,36 +546,6 @@ else
     --output text)
 fi
 
-echo "=== [11/10] Deploying Streamlit UI to App Runner ==="
-
-UI_REPO_NAME="multi-agent-ui-${SUFFIX}"
-
-aws "${PROFILE_ARG[@]}" ecr describe-repositories --repository-names "$UI_REPO_NAME" > /dev/null 2>&1 || \
-aws "${PROFILE_ARG[@]}" ecr create-repository --repository-name "$UI_REPO_NAME"
-
-echo "  Building UI Docker image..."
-docker build -t "$UI_REPO_NAME" -f ui/Dockerfile ui/
-echo "  Tagging and pushing UI image to ECR..."
-docker tag "${UI_REPO_NAME}:latest" "${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${UI_REPO_NAME}:latest"
-docker push "${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${UI_REPO_NAME}:latest"
-
-
-echo "  Deploying UI service to App Runner..."
-aws "${PROFILE_ARG[@]}" apprunner create-service \
-    --service-name "$UI_REPO_NAME" \
-    --source-configuration "{
-        \"AuthenticationConfiguration\": {\"AccessRoleArn\": \"arn:aws:iam::${ACCOUNT_ID}:role/AppRunnerECRAccessRole\"},
-        \"ImageRepository\": {
-            \"ImageIdentifier\": \"${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${UI_REPO_NAME}:latest\",
-            \"ImageConfiguration\": {
-                \"Port\": \"8501\",
-                \"RuntimeEnvironmentVariables\": {
-                    \"SUPPORT_API_URL\": \"https://46r8ga4hcc.us-east-1.awsapprunner.com/ask\"
-                }
-            },
-            \"ImageRepositoryType\": \"ECR\"
-        }
-    }" || echo "  [INFO] Service might already exist, updating is handled by ECR push if auto-deploy is on."
 
 echo ""
 echo "==================================================="
