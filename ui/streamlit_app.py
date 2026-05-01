@@ -95,7 +95,7 @@ def render_assistant_message(content: str, confidence: float | None, escalated: 
 
 
 st.set_page_config(
-    page_title="Multi-Agent Customer Support",
+    page_title="Multi-Agent Accademic Assistant",
     page_icon="💬",
     layout="wide",
 )
@@ -111,7 +111,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.title("Multi-Agent Customer Support")
+st.title("Multi-Multi-Agent Accademic Assistant")
 st.caption("Ask questions and get AI or TA-escalated responses.")
 
 api_url = resolve_api_url()
