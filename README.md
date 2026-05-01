@@ -37,7 +37,7 @@ POST /ask → Domain Classifier (api.py) → LangGraph Graph
 │   ├── api.py                    # FastAPI wrapper + domain classifier
 │   └── main.py                   # LangGraph graph architecture
 ├── data/
-│   └── pdfs/                     # Lecture note PDFs for Bedrock Knowledge Base
+│   └── materials/                     # Lecture note PDFs for Bedrock Knowledge Base
 ├── infra/
 │   ├── cloudformation.yaml       # IaC for S3, IAM, ECR, EventBridge, Lambda
 │   └── a2i_worker_template.xml   # SageMaker A2I reviewer UI template
