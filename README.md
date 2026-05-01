@@ -157,7 +157,7 @@ Features included:
 
 This project originated from a foundational LangGraph & AWS workshop. However, it has been significantly expanded, refactored, and transformed into a full-stack, production-ready application. 
 
-- **Key enhancements and custom implementations include:**
+**Key enhancements and custom implementations include:**
 
    - **Domain Shift & Real-World Use Case:** Adapted the base logic to function as an Academic Assistant, processing real-world university lecture slides and materials.
    - **Full-Stack UI:** Developed and integrated a persistent, user-friendly Streamlit frontend.
