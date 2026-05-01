@@ -132,7 +132,7 @@ To connect the UI to your backend API, you need to set the `SUPPORT_API_URL` env
 Create a `.env` file from `.env.example` and set your deployed App Runner URL:
 
 ```bash
-SUPPORT_API_URL=[https://46r8ga4hcc.us-east-1.awsapprunner.com/ask](https://46r8ga4hcc.us-east-1.awsapprunner.com/ask)
+SUPPORT_API_URL=https://46r8ga4hcc.us-east-1.awsapprunner.com/ask
 ```
 
 **For Cloud Deployment:**
