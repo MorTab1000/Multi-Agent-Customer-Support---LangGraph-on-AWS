@@ -117,7 +117,6 @@ st.caption("Ask questions and get AI or TA-escalated responses.")
 api_url = resolve_api_url()
 with st.sidebar:
     st.subheader("Configuration")
-    st.code(api_url, language="text")
     if st.button("Clear Chat", use_container_width=True):
         st.session_state.messages = []
         st.rerun()
