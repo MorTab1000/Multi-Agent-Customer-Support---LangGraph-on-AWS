@@ -155,14 +155,14 @@ Features included:
 
 ## Project Evolution & My Contributions
 
-> This project originated from a foundational LangGraph & AWS workshop. However, it has been significantly expanded, refactored, and transformed into a full-stack, production-ready application. 
->
-> **Key enhancements and custom implementations include:**
->
-> - **Domain Shift & Real-World Use Case:** Adapted the base logic to function as an Academic Assistant, processing real-world university lecture slides and materials.
-> - **Full-Stack UI:** Developed and integrated a persistent, user-friendly Streamlit frontend.
-> - **MCP Server Integration:** Engineered a Model Context Protocol (MCP) server, allowing external AI agents (like Claude Desktop or Cursor) to query the AWS Knowledge Base directly.
-> - **Cloud Infrastructure & CI/CD:** Architected the complete serverless deployment (App Runner, EventBridge, Lambda, SageMaker A2I) and wrote the automated bash deployment/teardown scripts.
+This project originated from a foundational LangGraph & AWS workshop. However, it has been significantly expanded, refactored, and transformed into a full-stack, production-ready application. 
+
+- **Key enhancements and custom implementations include:**
+
+   - **Domain Shift & Real-World Use Case:** Adapted the base logic to function as an Academic Assistant, processing real-world university lecture slides and materials.
+   - **Full-Stack UI:** Developed and integrated a persistent, user-friendly Streamlit frontend.
+   - **MCP Server Integration:** Engineered a Model Context Protocol (MCP) server, allowing external AI agents (like Claude Desktop or Cursor) to query the AWS Knowledge Base directly.
+   - **Cloud Infrastructure & CI/CD:** Architected the complete serverless deployment (App Runner, EventBridge, Lambda, SageMaker A2I) and wrote the automated bash deployment/teardown scripts.
 
 
 ## 🚀 Future Roadmap
