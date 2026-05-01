@@ -153,7 +153,7 @@ Features included:
 - Robust network/HTTP/JSON error handling
 - LaTeX formula rendering in responses through Streamlit Markdown (`$...$`, `$$...$$`)
 
-### Project Evolution & My Contributions
+## Project Evolution & My Contributions
 
 > This project originated from a foundational LangGraph & AWS workshop. However, it has been significantly expanded, refactored, and transformed into a full-stack, production-ready application. 
 >
@@ -163,3 +163,11 @@ Features included:
 > - **Full-Stack UI:** Developed and integrated a persistent, user-friendly Streamlit frontend.
 > - **MCP Server Integration:** Engineered a Model Context Protocol (MCP) server, allowing external AI agents (like Claude Desktop or Cursor) to query the AWS Knowledge Base directly.
 > - **Cloud Infrastructure & CI/CD:** Architected the complete serverless deployment (App Runner, EventBridge, Lambda, SageMaker A2I) and wrote the automated bash deployment/teardown scripts.
+
+
+## 🚀 Future Roadmap
+While the current architecture is fully functional, several enhancements are planned to scale the system's reasoning capabilities and simplify the infrastructure:
+
+* **Model Migration:** Transitioning the core LLM generator from Amazon Nova Pro to the **Claude 3.5 family**. This migration aims to reduce prompt-engineering overhead and significantly improve the system's ability to follow complex, multi-step instructions.
+* **Agentic Query Routing:** Implementing a **Query Planner** node within the LangGraph architecture. This will enable the decomposition of complex, multi-hop queries, allowing the agents to synthesize answers across multiple disparate documents.
+* **Session Persistence:** Upgrading the Streamlit frontend to support long-term memory and multiple chat threads, potentially utilizing Amazon DynamoDB to persist `thread_id` states securely.
