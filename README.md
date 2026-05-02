@@ -122,7 +122,7 @@ The project now supports Model Context Protocol (MCP), allowing AI agents (like 
 You can run a modern chat frontend locally that calls the deployed `/ask` endpoint.
 
 Live Streamlit deployment:
-[see demo app](https://multi-agent-support-langgraph-ux366hqvhua2vwrcfqmwh2.streamlit.app/)
+[see demo app](https://multi-agent-support-langgraph-tfubxmftwqzhju8xg77t8f.streamlit.app/)
 
 ### Configure API URL
 
